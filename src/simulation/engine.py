@@ -1,0 +1,211 @@
+"""
+simulation/engine.py
+Motor de simulação principal — orquestra agentes, rede e coleta de dados.
+"""
+
+from __future__ import annotations
+from dataclasses import dataclass, field
+from typing import Optional
+import random
+
+import mesa
+import networkx as nx
+from loguru import logger
+
+from ..agents.agent import InfoAgent, Message
+from ..agents.profiles import AgentType, generate_profile
+from ..network.topology import Topology, build_network, get_hub_nodes
+from ..llm.client import LLMClient
+
+
+@dataclass
+class SimulationConfig:
+    """Parâmetros de uma simulação."""
+    n_agents: int = 50
+    topology: Topology = Topology.SCALE_FREE
+    max_ticks: int = 100
+    seed: int = 42
+
+    # Mensagem inicial
+    initial_message: str = (
+        "URGENTE: Novo estudo mostra que beber água com limão em jejum "
+        "cura 80% dos casos de COVID-19. Compartilhe antes que censurem!"
+    )
+    inject_at: str = "hub"   # "hub" | "random" | "influencer"
+
+    # Intervenção
+    intervention: Optional[str] = None   # None | "factcheckers_hub" | "factcheckers_peripheral" | "remove_hubs"
+    intervention_tick: int = 10          # quando aplicar a intervenção
+
+    # LLM
+    llm_model: str = "claude-haiku-4-5-20251001"
+    enable_cache: bool = True
+
+
+class InfoSimModel(mesa.Model):
+    """
+    Modelo principal do BrazilianInfoSim.
+    Herda de mesa.Model para integração com o scheduler do Mesa.
+    """
+
+    def __init__(self, config: SimulationConfig):
+        super().__init__()
+        self.config = config
+        self.rng = random.Random(config.seed)
+        self.schedule = mesa.time.RandomActivation(self)
+
+        # Constrói rede
+        self.G: nx.Graph = build_network(
+            topology=config.topology,
+            n_agents=config.n_agents,
+            seed=config.seed,
+        )
+
+        # Inicializa LLM
+        self.llm = LLMClient(
+            model=config.llm_model,
+            enable_cache=config.enable_cache,
+        )
+
+        # Cria agentes
+        self.agents_by_id: dict[int, InfoAgent] = {}
+        for node_id in self.G.nodes():
+            profile = generate_profile(seed=config.seed + node_id)
+            agent = InfoAgent(
+                unique_id=node_id,
+                model=self,
+                profile=profile,
+                llm_client=self.llm,
+            )
+            self.schedule.add(agent)
+            self.agents_by_id[node_id] = agent
+
+        # Coleta de dados por tick
+        self.datacollector = mesa.DataCollector(
+            model_reporters={
+                "reached_count": self._count_reached,
+                "reach_pct": lambda m: m._count_reached() / m.config.n_agents * 100,
+                "believers": self._count_believers,
+                "tick": lambda m: m.schedule.time,
+            },
+            agent_reporters={
+                "belief_level": "belief_level",
+                "agent_type": lambda a: a.profile.agent_type.value,
+                "has_seen": "has_seen_disinformation",
+            }
+        )
+
+        # Injeta mensagem inicial
+        self._inject_initial_message()
+        logger.info(
+            f"Simulação iniciada: {config.n_agents} agentes, "
+            f"topologia={config.topology.value}, seed={config.seed}"
+        )
+
+    def _inject_initial_message(self) -> None:
+        """Injeta a fake news no nó inicial conforme configuração."""
+        if self.config.inject_at == "hub":
+            hubs = get_hub_nodes(self.G, top_k=1)
+            start_node = hubs[0]
+        elif self.config.inject_at == "influencer":
+            influencer_ids = [
+                aid for aid, a in self.agents_by_id.items()
+                if a.profile.agent_type == AgentType.INFLUENCER
+            ]
+            start_node = self.rng.choice(influencer_ids) if influencer_ids else 0
+        else:
+            start_node = self.rng.randint(0, self.config.n_agents - 1)
+
+        msg = Message(
+            content=self.config.initial_message,
+            original_content=self.config.initial_message,
+            hops=0,
+            sender_id=None,
+        )
+        seed_agent = self.agents_by_id[start_node]
+        seed_agent.receive(msg)
+        logger.info(f"Fake news injetada no nó {start_node} (grau={self.G.degree(start_node)})")
+
+    def _apply_intervention(self) -> None:
+        """Aplica intervenção no tick configurado."""
+        if self.config.intervention == "factcheckers_hub":
+            hubs = get_hub_nodes(self.G, top_k=max(1, self.config.n_agents // 10))
+            for node_id in hubs:
+                self.agents_by_id[node_id].profile.agent_type = AgentType.FACTCHECKER
+            logger.info(f"Intervenção: {len(hubs)} fact-checkers inseridos em hubs")
+
+        elif self.config.intervention == "factcheckers_peripheral":
+            from ..network.topology import get_peripheral_nodes
+            peripheral = get_peripheral_nodes(self.G, bottom_k=max(1, self.config.n_agents // 10))
+            for node_id in peripheral:
+                self.agents_by_id[node_id].profile.agent_type = AgentType.FACTCHECKER
+            logger.info(f"Intervenção: {len(peripheral)} fact-checkers inseridos em nós periféricos")
+
+        elif self.config.intervention == "remove_hubs":
+            hubs = get_hub_nodes(self.G, top_k=5)
+            self.G.remove_nodes_from(hubs)
+            for node_id in hubs:
+                self.schedule.remove(self.agents_by_id.pop(node_id))
+            logger.info(f"Intervenção: {len(hubs)} supernós removidos da rede")
+
+    def _count_reached(self) -> int:
+        return sum(1 for a in self.agents_by_id.values() if a.has_seen_disinformation)
+
+    def _count_believers(self) -> int:
+        return sum(1 for a in self.agents_by_id.values() if a.belief_level > 0.5)
+
+    def step(self) -> None:
+        """Executa um tick de simulação."""
+        tick = self.schedule.time
+
+        # Aplica intervenção no tick configurado
+        if self.config.intervention and tick == self.config.intervention_tick:
+            self._apply_intervention()
+
+        self.datacollector.collect(self)
+        self.schedule.step()
+
+    def run(self) -> "SimulationResult":
+        """Executa a simulação completa até max_ticks ou extinção."""
+        prev_reached = 0
+        stagnation_count = 0
+
+        for tick in range(self.config.max_ticks):
+            self.step()
+            reached = self._count_reached()
+
+            # Condição de parada: sem novos agentes atingidos por 5 ticks
+            if reached == prev_reached:
+                stagnation_count += 1
+            else:
+                stagnation_count = 0
+                prev_reached = reached
+
+            if stagnation_count >= 5:
+                logger.info(f"Simulação extinta no tick {tick} (sem propagação por 5 ticks)")
+                break
+
+        logger.info(
+            f"Simulação concluída | Alcance: {reached}/{self.config.n_agents} "
+            f"({reached/self.config.n_agents*100:.1f}%) | "
+            f"LLM: {self.llm.stats}"
+        )
+
+        return SimulationResult(
+            config=self.config,
+            model_data=self.datacollector.get_model_vars_dataframe(),
+            agent_data=self.datacollector.get_agent_vars_dataframe(),
+            final_reach_pct=reached / self.config.n_agents * 100,
+            extinction_tick=self.schedule.time,
+            llm_stats=self.llm.stats,
+        )
+
+
+@dataclass
+class SimulationResult:
+    config: SimulationConfig
+    model_data: object       # DataFrame
+    agent_data: object       # DataFrame
+    final_reach_pct: float
+    extinction_tick: int
+    llm_stats: dict
