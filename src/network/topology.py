@@ -52,12 +52,14 @@ def build_network(
     else:
         raise ValueError(f"Topologia desconhecida: {topology}")
 
-    # Garante que o grafo seja conexo (sem nós isolados)
+    # Garante que o grafo seja conexo (sem nós isolados).
+    # Usa um RNG semeado para manter reprodutibilidade entre execuções.
     if not nx.is_connected(G):
+        rng = random.Random(seed)
         components = list(nx.connected_components(G))
         for comp in components[1:]:
-            u = random.choice(list(components[0]))
-            v = random.choice(list(comp))
+            u = rng.choice(list(components[0]))
+            v = rng.choice(list(comp))
             G.add_edge(u, v)
 
     return G
