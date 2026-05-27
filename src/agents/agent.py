@@ -55,12 +55,15 @@ class InfoAgent(mesa.Agent):
 
     def __init__(
         self,
-        unique_id: int,
         model: mesa.Model,
         profile: AgentProfile,
         llm_client: "LLMClient",
+        node_id: int,
     ):
-        super().__init__(unique_id, model)
+        # Mesa 3.x: Agent.__init__ recebe apenas o model; unique_id é
+        # atribuído automaticamente. Guardamos node_id para casar com o grafo.
+        super().__init__(model)
+        self.node_id = node_id
         self.profile = profile
         self.llm = llm_client
 
@@ -101,7 +104,7 @@ class InfoAgent(mesa.Agent):
         import random
         self.received_contents.add(message.content)
         if random.random() < 0.10:   # 10% de chance de compartilhar
-            self._broadcast(message.forward(self.unique_id))
+            self._broadcast(message.forward(self.node_id))
 
     def _process_message(self, message: Message) -> None:
         self.received_contents.add(message.content)
@@ -113,7 +116,7 @@ class InfoAgent(mesa.Agent):
         )
 
         self.interaction_history.append({
-            "tick": self.model.schedule.time,
+            "tick": self.model.tick,
             "received": message.content,
             "decision": decision.value,
             "sent": new_content,
@@ -129,13 +132,13 @@ class InfoAgent(mesa.Agent):
                 content=f"[REFUTAÇÃO] {new_content}",
                 original_content=message.original_content,
                 hops=message.hops + 1,
-                sender_id=self.unique_id,
+                sender_id=self.node_id,
             )
             self._broadcast(refutation)
 
         elif decision == Decision.SHARE:
             self.belief_level = min(1.0, self.belief_level + 0.15)
-            self._broadcast(message.forward(self.unique_id))
+            self._broadcast(message.forward(self.node_id))
 
         elif decision == Decision.MUTATE:
             self.belief_level = min(1.0, self.belief_level + 0.10)
@@ -145,7 +148,7 @@ class InfoAgent(mesa.Agent):
     def _broadcast(self, message: Message) -> None:
         """Envia mensagem para todos os vizinhos no grafo."""
         self.sent_messages.append(message)
-        neighbors = list(self.model.G.neighbors(self.unique_id))
+        neighbors = list(self.model.G.neighbors(self.node_id))
         for neighbor_id in neighbors:
             neighbor = self.model.agents_by_id.get(neighbor_id)
             if neighbor:

@@ -37,8 +37,9 @@ class SimulationConfig:
     intervention: Optional[str] = None   # None | "factcheckers_hub" | "factcheckers_peripheral" | "remove_hubs"
     intervention_tick: int = 10          # quando aplicar a intervenção
 
-    # LLM
-    llm_model: str = "claude-haiku-4-5-20251001"
+    # LLM (None = deixa o LLMClient resolver via env: LLM_PROVIDER / LLM_MODEL)
+    llm_provider: Optional[str] = None   # None | "ollama" | "anthropic"
+    llm_model: Optional[str] = None
     enable_cache: bool = True
 
 
@@ -49,10 +50,12 @@ class InfoSimModel(mesa.Model):
     """
 
     def __init__(self, config: SimulationConfig):
-        super().__init__()
+        # Mesa 3.x: passamos a seed ao Model (RNG interno). Mantemos também
+        # um Random próprio para sorteios reprodutíveis do modelo.
+        super().__init__(rng=config.seed)
         self.config = config
         self.rng = random.Random(config.seed)
-        self.schedule = mesa.time.RandomActivation(self)
+        self.tick = 0   # contador próprio de ticks (Mesa 3.x removeu schedule.time)
 
         # Constrói rede
         self.G: nx.Graph = build_network(
@@ -63,21 +66,21 @@ class InfoSimModel(mesa.Model):
 
         # Inicializa LLM
         self.llm = LLMClient(
+            provider=config.llm_provider,
             model=config.llm_model,
             enable_cache=config.enable_cache,
         )
 
-        # Cria agentes
+        # Cria agentes (Mesa 3.x registra automaticamente em self.agents)
         self.agents_by_id: dict[int, InfoAgent] = {}
         for node_id in self.G.nodes():
             profile = generate_profile(seed=config.seed + node_id)
             agent = InfoAgent(
-                unique_id=node_id,
                 model=self,
                 profile=profile,
                 llm_client=self.llm,
+                node_id=node_id,
             )
-            self.schedule.add(agent)
             self.agents_by_id[node_id] = agent
 
         # Coleta de dados por tick
@@ -86,7 +89,7 @@ class InfoSimModel(mesa.Model):
                 "reached_count": self._count_reached,
                 "reach_pct": lambda m: m._count_reached() / m.config.n_agents * 100,
                 "believers": self._count_believers,
-                "tick": lambda m: m.schedule.time,
+                "tick": lambda m: m.tick,
             },
             agent_reporters={
                 "belief_level": "belief_level",
@@ -145,7 +148,7 @@ class InfoSimModel(mesa.Model):
             hubs = get_hub_nodes(self.G, top_k=5)
             self.G.remove_nodes_from(hubs)
             for node_id in hubs:
-                self.schedule.remove(self.agents_by_id.pop(node_id))
+                self.agents_by_id.pop(node_id).remove()
             logger.info(f"Intervenção: {len(hubs)} supernós removidos da rede")
 
     def _count_reached(self) -> int:
@@ -156,14 +159,14 @@ class InfoSimModel(mesa.Model):
 
     def step(self) -> None:
         """Executa um tick de simulação."""
-        tick = self.schedule.time
-
         # Aplica intervenção no tick configurado
-        if self.config.intervention and tick == self.config.intervention_tick:
+        if self.config.intervention and self.tick == self.config.intervention_tick:
             self._apply_intervention()
 
         self.datacollector.collect(self)
-        self.schedule.step()
+        # Mesa 3.x: ativação aleatória dos agentes via AgentSet
+        self.agents.shuffle_do("step")
+        self.tick += 1
 
     def run(self) -> "SimulationResult":
         """Executa a simulação completa até max_ticks ou extinção."""
@@ -196,7 +199,7 @@ class InfoSimModel(mesa.Model):
             model_data=self.datacollector.get_model_vars_dataframe(),
             agent_data=self.datacollector.get_agent_vars_dataframe(),
             final_reach_pct=reached / self.config.n_agents * 100,
-            extinction_tick=self.schedule.time,
+            extinction_tick=self.tick,
             llm_stats=self.llm.stats,
         )
 

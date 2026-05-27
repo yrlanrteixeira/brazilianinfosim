@@ -40,6 +40,8 @@ def run_single(args) -> None:
         max_ticks=args.ticks,
         seed=args.seed,
         intervention=args.intervention or None,
+        llm_provider=args.provider,
+        llm_model=args.model,
     )
 
     print(f"\n{'='*60}")
@@ -65,7 +67,10 @@ def run_single(args) -> None:
 
 
 def run_all() -> None:
-    """Roda a matriz experimental completa (12 configurações × 3 seeds)."""
+    """Roda a matriz experimental completa.
+
+    3 topologias × 2 intervenções × 2 mensagens × 3 seeds = 36 runs.
+    """
     topologies = [Topology.RANDOM, Topology.SCALE_FREE, Topology.SMALL_WORLD]
     interventions = [None, "factcheckers_hub"]
     messages = {
@@ -122,11 +127,19 @@ def main():
     parser.add_argument("--intervention",type=str,  default=None,
                         choices=["factcheckers_hub", "factcheckers_peripheral", "remove_hubs"],
                         help="Tipo de intervenção")
+    parser.add_argument("--provider",    type=str,  default=None,
+                        choices=["ollama", "anthropic"],
+                        help="Provedor de LLM (default: env LLM_PROVIDER ou 'ollama')")
+    parser.add_argument("--model",       type=str,  default=None,
+                        help="Modelo LLM (default: env LLM_MODEL ou default do provider)")
     parser.add_argument("--all",         action="store_true",            help="Roda matriz experimental completa")
     args = parser.parse_args()
 
-    if not os.getenv("ANTHROPIC_API_KEY"):
-        print("❌ ANTHROPIC_API_KEY não encontrada. Configure o arquivo .env")
+    # Só exige a chave da Anthropic quando o provider efetivo for "anthropic".
+    effective_provider = (args.provider or os.getenv("LLM_PROVIDER", "ollama")).lower()
+    if effective_provider == "anthropic" and not os.getenv("ANTHROPIC_API_KEY"):
+        print("❌ provider=anthropic mas ANTHROPIC_API_KEY não encontrada. "
+              "Configure o .env ou use --provider ollama")
         sys.exit(1)
 
     if args.all:
