@@ -1,31 +1,33 @@
+# Versões fixadas e validadas em Python 3.14 (Mesa série 3.x)
+
 # Core
-mesa==2.3.0
-networkx==3.3
-numpy==1.26.4
-pandas==2.2.2
+mesa==3.5.1
+networkx==3.6.1
+numpy==2.4.6
+pandas==3.0.3
 
 # LLM
-anthropic==0.28.0
-openai==1.35.0
-tiktoken==0.7.0
+anthropic==0.104.1
+openai==2.38.0          # cliente OpenAI-compatível usado para falar com o Ollama
+tiktoken==0.13.0
 
-# Métricas semânticas
-sentence-transformers==3.0.1
+# Métricas semânticas (cache semântico + taxa de mutação)
+sentence-transformers==5.5.1
 
 # Visualização
-matplotlib==3.9.0
-plotly==5.22.0
+matplotlib==3.10.9
+plotly==6.7.0
 seaborn==0.13.2
 
 # Persistência
-sqlalchemy==2.0.31
-tqdm==4.66.4
+sqlalchemy==2.0.50
+tqdm==4.67.3
 
 # Utilitários
-python-dotenv==1.0.1
-pydantic==2.7.4
-loguru==0.7.2
+python-dotenv==1.2.2
+pydantic==2.13.4
+loguru==0.7.3
 
 # Testes
-pytest==8.2.2
-pytest-cov==5.0.0
+pytest==9.0.3
+pytest-cov==7.1.0

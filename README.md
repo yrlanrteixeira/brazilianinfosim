@@ -18,7 +18,7 @@ brazilianinfosim/
 │   ├── network/
 │   │   └── topology.py       # Geração de grafos (Erdős-Rényi, BA, WS)
 │   ├── llm/
-│   │   └── client.py         # Cliente Anthropic com cache semântico
+│   │   └── client.py         # Cliente multi-provider (Ollama/Anthropic) com cache semântico
 │   ├── simulation/
 │   │   └── engine.py         # Motor de simulação (Mesa)
 │   └── metrics/
@@ -38,6 +38,8 @@ brazilianinfosim/
 
 ## Setup
 
+> Requer **Python 3.14** (dependências fixadas e validadas nessa versão).
+
 ```bash
 # 1. Clone o repositório
 git clone https://github.com/seu-grupo/brazilianinfosim.git
@@ -53,7 +55,21 @@ pip install -r requirements.txt
 
 # 4. Configure as variáveis de ambiente
 cp .env.example .env
-# Edite .env e adicione sua ANTHROPIC_API_KEY
+# O default é Ollama (local). Para usar a API da Anthropic,
+# ajuste LLM_PROVIDER=anthropic e preencha ANTHROPIC_API_KEY no .env
+```
+
+### Provedor de LLM
+
+O projeto roda por padrão com **Ollama** (LLM local, sem custo de API). Configure via `.env`
+(`LLM_PROVIDER`, `LLM_MODEL`, `OLLAMA_BASE_URL`) ou pelas flags `--provider` / `--model`.
+
+```bash
+# Ollama (default): suba o servidor e baixe o modelo antes
+ollama serve
+ollama pull llama3.1:8b
+
+# Anthropic: defina LLM_PROVIDER=anthropic e ANTHROPIC_API_KEY no .env
 ```
 
 ---
