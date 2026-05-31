@@ -12,10 +12,10 @@ import mesa
 import networkx as nx
 from loguru import logger
 
-from ..agents.agent import InfoAgent, Message
-from ..agents.profiles import AgentType, generate_profile
-from ..network.topology import Topology, build_network, get_hub_nodes
-from ..llm.client import LLMClient
+from agents.agent import InfoAgent, Message
+from agents.profiles import AgentType, generate_profile
+from network.topology import Topology, build_network, get_hub_nodes
+from llm.client import LLMClient
 
 
 @dataclass
@@ -138,7 +138,7 @@ class InfoSimModel(mesa.Model):
             logger.info(f"Intervenção: {len(hubs)} fact-checkers inseridos em hubs")
 
         elif self.config.intervention == "factcheckers_peripheral":
-            from ..network.topology import get_peripheral_nodes
+            from network.topology import get_peripheral_nodes
             peripheral = get_peripheral_nodes(self.G, bottom_k=max(1, self.config.n_agents // 10))
             for node_id in peripheral:
                 self.agents_by_id[node_id].profile.agent_type = AgentType.FACTCHECKER

@@ -22,7 +22,7 @@ from abc import ABC, abstractmethod
 from typing import Optional
 from loguru import logger
 
-from ..agents.agent import Decision
+from agents.agent import Decision
 
 
 # ─────────────────────────────────────────────────────────────────────────────

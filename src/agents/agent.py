@@ -12,7 +12,7 @@ import mesa
 from .profiles import AgentProfile
 
 if TYPE_CHECKING:
-    from ..llm.client import LLMClient
+    from llm.client import LLMClient
 
 
 class Decision(str, Enum):

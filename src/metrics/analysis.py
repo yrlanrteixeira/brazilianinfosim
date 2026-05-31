@@ -11,7 +11,7 @@ import matplotlib.gridspec as gridspec
 import numpy as np
 
 if TYPE_CHECKING:
-    from ..simulation.engine import SimulationResult
+    from simulation.engine import SimulationResult
 
 
 def semantic_mutation_rate(messages: list[str], original: str) -> float:
