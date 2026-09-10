@@ -41,6 +41,9 @@ class SimulationConfig:
     llm_provider: Optional[str] = None   # None | "ollama" | "anthropic"
     llm_model: Optional[str] = None
     enable_cache: bool = True
+    # None deixa o LLMClient resolver via env. Ver nota sobre o modo
+    # "semantic" em llm/client.py: ele colapsa perfis distintos.
+    cache_mode: Optional[str] = None     # None | "exact" | "semantic" | "off"
 
 
 class InfoSimModel(mesa.Model):
@@ -69,6 +72,7 @@ class InfoSimModel(mesa.Model):
             provider=config.llm_provider,
             model=config.llm_model,
             enable_cache=config.enable_cache,
+            cache_mode=config.cache_mode,
         )
 
         # Cria agentes (Mesa 3.x registra automaticamente em self.agents)

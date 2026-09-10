@@ -12,7 +12,15 @@ Configuração via variáveis de ambiente:
   OLLAMA_BASE_URL       = URL do Ollama (default: "http://localhost:11434")
   ANTHROPIC_API_KEY     = chave da API (obrigatória se provider="anthropic")
   ENABLE_CACHE          = "true" | "false"        (default: "true")
-  CACHE_SIMILARITY_THRESHOLD = float [0,1]        (default: 0.92)
+  CACHE_MODE            = "exact" | "semantic" | "off"   (default: "exact")
+  CACHE_SIMILARITY_THRESHOLD = float [0,1]        (default: 0.92, só no modo semantic)
+
+Sobre o cache: o modo "semantic" era o default até o TCC I e comparava o
+embedding do prompt INTEIRO por similaridade de cosseno. Como o template fixo
+é três vezes maior que a descrição do agente, ele domina o embedding e
+prompts de perfis opostos ficam acima do limiar. O default agora é "exact",
+que exige situação idêntica. O modo "semantic" fica disponível apenas para
+quantificar o artefato nos resultados antigos.
 """
 
 from __future__ import annotations
@@ -78,6 +86,39 @@ REFUSAL_MARKERS = (
     "i won't",
     "i'm not able to",
 )
+
+
+CACHE_MODES = ("exact", "semantic", "off")
+
+
+def _resolve_cache_mode(
+    cache_mode: Optional[str], enable_cache: Optional[bool]
+) -> str:
+    """
+    Precedência: argumento explícito, depois enable_cache=False, depois env.
+
+    `semantic` é o modo do TCC I e fica disponível só para medir o artefato
+    que ele introduz: com limiar 0,92 o template do prompt domina o embedding
+    e prompts de perfis opostos dão hit. Não use em campanha nova.
+    """
+    if cache_mode is None and enable_cache is False:
+        cache_mode = "off"
+    if cache_mode is None:
+        cache_mode = os.environ.get("CACHE_MODE", "").lower() or None
+    if cache_mode is None:
+        env_enabled = os.environ.get("ENABLE_CACHE", "true").lower() == "true"
+        cache_mode = "exact" if env_enabled else "off"
+
+    if cache_mode not in CACHE_MODES:
+        raise ValueError(
+            f"cache_mode inválido: {cache_mode!r}. Use um de {CACHE_MODES}."
+        )
+    if cache_mode == "semantic":
+        logger.warning(
+            "cache_mode='semantic' reproduz o colapso de perfis do TCC I. "
+            "Use apenas para quantificar o artefato."
+        )
+    return cache_mode
 
 
 def is_refusal(raw: str) -> bool:
@@ -234,6 +275,7 @@ class LLMClient:
         model: Optional[str] = None,
         enable_cache: Optional[bool] = None,
         similarity_threshold: Optional[float] = None,
+        cache_mode: Optional[str] = None,
     ):
         self.provider = make_provider(provider=provider, model=model)
 
@@ -245,8 +287,12 @@ class LLMClient:
                 os.environ.get("CACHE_SIMILARITY_THRESHOLD", "0.92")
             )
 
-        self.enable_cache = enable_cache
+        self.cache_mode = _resolve_cache_mode(cache_mode, enable_cache)
+        self.enable_cache = self.cache_mode != "off"
         self.similarity_threshold = similarity_threshold
+        # Chave exata: prompt inteiro. Inclui descrição do agente, mensagem e
+        # histórico, então um hit exige situação idêntica.
+        self._exact: dict[str, dict] = {}
         self._cache: list[dict] = []
         self._embedder = None
         self._call_count = 0
@@ -275,7 +321,14 @@ class LLMClient:
         self._emb_norms = np.linalg.norm(self._emb_matrix, axis=1)
 
     def _find_in_cache(self, prompt: str) -> Optional[dict]:
-        if not self.enable_cache or not self._cache:
+        if self.cache_mode == "off":
+            return None
+        if self.cache_mode == "exact":
+            return self._exact.get(prompt)
+        return self._find_semantic(prompt)
+
+    def _find_semantic(self, prompt: str) -> Optional[dict]:
+        if not self._cache:
             return None
         import numpy as np
 
@@ -294,7 +347,10 @@ class LLMClient:
         return None
 
     def _add_to_cache(self, prompt: str, response: dict) -> None:
-        if not self.enable_cache:
+        if self.cache_mode == "off":
+            return
+        if self.cache_mode == "exact":
+            self._exact[prompt] = response
             return
         embedder = self._get_embedder()
         embedding = embedder.encode(prompt)
@@ -409,6 +465,7 @@ class LLMClient:
         return {
             "provider": self.provider.name,
             "model": self.provider.model,
+            "cache_mode": self.cache_mode,
             "api_calls": self._call_count,
             "cache_hits": self._cache_hits,
             "cache_hit_rate": f"{hit_rate:.1%}",
