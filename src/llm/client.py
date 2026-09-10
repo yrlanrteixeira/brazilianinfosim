@@ -60,6 +60,38 @@ Responda SOMENTE com o JSON, sem texto adicional.
 """
 
 
+# Marcadores de recusa do modelo (guardrail de segurança), que NÃO devem ser
+# confundidos com o agente ter avaliado e decidido IGNORAR.
+REFUSAL_MARKERS = (
+    "não posso ajudar",
+    "não posso participar",
+    "não vou ajudar",
+    "não posso gerar",
+    "não posso criar",
+    "não me sinto confortável",
+    "conteúdo prejudicial",
+    "desinformação prejudicial",
+    "espalhar desinformação",
+    "as an ai",
+    "i cannot",
+    "i can't help",
+    "i won't",
+    "i'm not able to",
+)
+
+
+def is_refusal(raw: str) -> bool:
+    """
+    Detecta recusa por política de conteúdo do modelo.
+
+    Só é consultada quando a resposta não produziu JSON válido, então uma
+    resposta legítima que mencione "desinformação" no campo `content` não é
+    classificada como recusa por engano.
+    """
+    low = raw.lower()
+    return any(m in low for m in REFUSAL_MARKERS)
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Provider interface
 # ─────────────────────────────────────────────────────────────────────────────
@@ -220,6 +252,10 @@ class LLMClient:
         self._call_count = 0
         self._cache_hits = 0
         self._parse_errors = 0
+        self._refusals = 0
+        # Matriz de embeddings mantida para busca vetorizada
+        self._emb_matrix = None
+        self._emb_norms = None
 
     def _get_embedder(self):
         if self._embedder is None:
@@ -228,18 +264,33 @@ class LLMClient:
             self._embedder = SentenceTransformer("paraphrase-multilingual-MiniLM-L12-v2")
         return self._embedder
 
+    def _rebuild_matrix(self) -> None:
+        """(Re)constrói a matriz de embeddings usada na busca vetorizada."""
+        import numpy as np
+        if not self._cache:
+            self._emb_matrix = None
+            self._emb_norms = None
+            return
+        self._emb_matrix = np.stack([e["embedding"] for e in self._cache])
+        self._emb_norms = np.linalg.norm(self._emb_matrix, axis=1)
+
     def _find_in_cache(self, prompt: str) -> Optional[dict]:
         if not self.enable_cache or not self._cache:
             return None
         import numpy as np
+
+        # Antes era um laço Python com np.dot por entrada — O(n) em chamadas
+        # Python, o que virava o custo dominante em campanhas grandes.
+        # Agora é um único produto matriz-vetor.
+        if self._emb_matrix is None or self._emb_matrix.shape[0] != len(self._cache):
+            self._rebuild_matrix()
+
         embedder = self._get_embedder()
-        query_emb = embedder.encode(prompt)
-        for entry in self._cache:
-            cos_sim = np.dot(query_emb, entry["embedding"]) / (
-                np.linalg.norm(query_emb) * np.linalg.norm(entry["embedding"]) + 1e-9
-            )
-            if cos_sim >= self.similarity_threshold:
-                return entry["response"]
+        q = embedder.encode(prompt)
+        sims = (self._emb_matrix @ q) / (self._emb_norms * np.linalg.norm(q) + 1e-9)
+        i = int(np.argmax(sims))
+        if sims[i] >= self.similarity_threshold:
+            return self._cache[i]["response"]
         return None
 
     def _add_to_cache(self, prompt: str, response: dict) -> None:
@@ -248,6 +299,7 @@ class LLMClient:
         embedder = self._get_embedder()
         embedding = embedder.encode(prompt)
         self._cache.append({"embedding": embedding, "response": response})
+        self._emb_matrix = None   # invalida; reconstruída na próxima consulta
 
     def _extract_json(self, raw: str) -> dict:
         """
@@ -274,12 +326,16 @@ class LLMClient:
         agent_description: str,
         message_content: str,
         history: list[dict],
-    ) -> tuple[Decision, str]:
+    ) -> tuple[Decision, str, bool]:
         """
         Pede ao LLM uma decisão sobre a mensagem.
 
         Returns:
-            (Decision, conteúdo a enviar)
+            (Decision, conteúdo a enviar, recusado_por_guardrail)
+
+        O terceiro elemento é novo: antes, uma recusa do modelo era
+        indistinguível de o agente decidir IGNORAR — o que misturava duas
+        coisas cientificamente opostas na mesma categoria.
         """
         history_block = ""
         if history:
@@ -299,35 +355,57 @@ class LLMClient:
         cached = self._find_in_cache(prompt)
         if cached:
             self._cache_hits += 1
-            return Decision(cached["decision"]), cached.get("content", "")
+            return (
+                Decision(cached["decision"]),
+                cached.get("content", ""),
+                cached.get("refused", False),
+            )
 
         # Chama o provider
         self._call_count += 1
+        raw = ""
         try:
             raw = self.provider.complete(prompt=prompt, max_tokens=300)
             parsed = self._extract_json(raw)
             decision = Decision(parsed.get("decision", Decision.IGNORE.value))
             content = parsed.get("content", "")
-            self._add_to_cache(prompt, {"decision": decision.value, "content": content})
-            return decision, content
+            self._add_to_cache(
+                prompt, {"decision": decision.value, "content": content, "refused": False}
+            )
+            return decision, content, False
 
         except (json.JSONDecodeError, KeyError, ValueError) as e:
+            # Só aqui é possível distinguir recusa de erro de formato: se não
+            # veio JSON e o texto casa com um marcador de recusa, foi guardrail.
+            if raw and is_refusal(raw):
+                self._refusals += 1
+                logger.info(
+                    f"Recusa do modelo detectada ({self._refusals} total). "
+                    f"Registrada como IGNORAR, mas contabilizada à parte."
+                )
+                self._add_to_cache(
+                    prompt,
+                    {"decision": Decision.IGNORE.value, "content": "", "refused": True},
+                )
+                return Decision.IGNORE, "", True
+
             self._parse_errors += 1
             logger.warning(
                 f"Erro ao parsear resposta LLM ({self._parse_errors} total): {e}. "
                 f"Usando IGNORAR."
             )
-            return Decision.IGNORE, ""
+            return Decision.IGNORE, "", False
 
         except Exception as e:
             self._parse_errors += 1
             logger.error(f"Erro inesperado na chamada LLM: {type(e).__name__}: {e}")
-            return Decision.IGNORE, ""
+            return Decision.IGNORE, "", False
 
     @property
     def stats(self) -> dict:
         total = self._call_count + self._cache_hits
         hit_rate = self._cache_hits / total if total > 0 else 0
+        refusal_rate = self._refusals / self._call_count if self._call_count > 0 else 0
         return {
             "provider": self.provider.name,
             "model": self.provider.model,
@@ -335,4 +413,6 @@ class LLMClient:
             "cache_hits": self._cache_hits,
             "cache_hit_rate": f"{hit_rate:.1%}",
             "parse_errors": self._parse_errors,
+            "refusals": self._refusals,
+            "refusal_rate": f"{refusal_rate:.1%}",
         }

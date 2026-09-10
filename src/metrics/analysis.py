@@ -14,31 +14,103 @@ if TYPE_CHECKING:
     from simulation.engine import SimulationResult
 
 
+_EMBEDDER = None
+
+
+def _get_embedder():
+    """Carrega o modelo de embeddings uma única vez por processo."""
+    global _EMBEDDER
+    if _EMBEDDER is None:
+        from sentence_transformers import SentenceTransformer
+        _EMBEDDER = SentenceTransformer("paraphrase-multilingual-MiniLM-L12-v2")
+    return _EMBEDDER
+
+
+def _cossim(a, b) -> float:
+    return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b) + 1e-9))
+
+
 def semantic_mutation_rate(messages: list[str], original: str) -> float:
     """
-    Calcula a taxa de mutação semântica média usando similaridade de cosseno.
+    Similaridade média de cosseno entre as mensagens mutadas e a original.
     Retorna valor entre 0 (muito mutado) e 1 (idêntico).
+
+    ATENÇÃO: esta função retorna SIMILARIDADE, não o índice M do artigo.
+    O artigo define M = média de (1 - cossim entre versões CONSECUTIVAS),
+    com 0 = fidelidade e 1 = distorção. Use `mutation_index()` para isso.
     """
     if not messages:
         return 1.0
     try:
-        from sentence_transformers import SentenceTransformer
-        model = SentenceTransformer("paraphrase-multilingual-MiniLM-L12-v2")
+        model = _get_embedder()
         original_emb = model.encode(original)
-        sims = []
-        for msg in messages:
-            emb = model.encode(msg)
-            cos = np.dot(original_emb, emb) / (
-                np.linalg.norm(original_emb) * np.linalg.norm(emb) + 1e-9
-            )
-            sims.append(cos)
+        sims = [_cossim(original_emb, model.encode(m)) for m in messages]
         return float(np.mean(sims))
     except ImportError:
         return -1.0  # sentence-transformers não instalado
 
 
-def summarize_result(result: "SimulationResult") -> dict:
-    """Gera um dicionário de métricas resumidas de uma simulação."""
+def mutation_index(mutations: list[dict]) -> float:
+    """
+    Índice de mutação semântica M do artigo, sobre versões CONSECUTIVAS:
+
+        M = (1/N) * sum_t [ 1 - cossim(e_t, e_{t-1}) ]
+
+    Cada item de `mutations` traz `content` (versão t) e `parent_content`
+    (versão t-1). Retorna 0 para fidelidade total e 1 para distorção total.
+    """
+    pares = [(m["content"], m["parent_content"]) for m in mutations
+             if m.get("parent_content")]
+    if not pares:
+        return 0.0
+    try:
+        model = _get_embedder()
+        vals = [1.0 - _cossim(model.encode(atual), model.encode(anterior))
+                for atual, anterior in pares]
+        return float(np.mean(vals))
+    except ImportError:
+        return -1.0
+
+
+def mutation_by_hop(mutations: list[dict]) -> pd.DataFrame:
+    """
+    Índice de mutação agregado por hop, para ver a distorção acumulando ao
+    longo da cascata. Colunas: hop, n, M, M_vs_original.
+    """
+    cols = ["hop", "n", "M", "M_vs_original"]
+    if not mutations:
+        return pd.DataFrame(columns=cols)
+    try:
+        model = _get_embedder()
+    except ImportError:
+        return pd.DataFrame(columns=cols)
+
+    linhas = []
+    for hop, grupo in pd.DataFrame(mutations).groupby("hop"):
+        consec, vs_orig = [], []
+        for _, r in grupo.iterrows():
+            e_t = model.encode(r["content"])
+            if r.get("parent_content"):
+                consec.append(1.0 - _cossim(e_t, model.encode(r["parent_content"])))
+            if r.get("original_content"):
+                vs_orig.append(1.0 - _cossim(e_t, model.encode(r["original_content"])))
+        linhas.append({
+            "hop": int(hop),
+            "n": len(grupo),
+            "M": float(np.mean(consec)) if consec else np.nan,
+            "M_vs_original": float(np.mean(vs_orig)) if vs_orig else np.nan,
+        })
+    return pd.DataFrame(linhas).sort_values("hop").reset_index(drop=True)
+
+
+def summarize_result(result: "SimulationResult", with_mutation: bool = True) -> dict:
+    """
+    Gera um dicionário de métricas resumidas de uma simulação.
+
+    with_mutation=False desliga o cálculo do índice de mutação (que exige
+    embeddings e é o passo mais lento) — útil em campanhas grandes onde a
+    mutação será calculada depois, em lote.
+    """
     df = result.model_data
 
     # Velocidade: tick em que atingiu 25%, 50%, 75%
@@ -53,9 +125,16 @@ def summarize_result(result: "SimulationResult") -> dict:
         "topology":          result.config.topology.value,
         "n_agents":          result.config.n_agents,
         "intervention":      result.config.intervention or "none",
+        "inject_at":         result.config.inject_at,
         "final_reach_pct":   round(result.final_reach_pct, 2),
+        "final_reach_pct_active": round(result.final_reach_pct_active, 2),
         "extinction_tick":   result.extinction_tick,
         "final_believers":   int(df["believers"].iloc[-1]),
+        "n_removed":         result.n_removed,
+        "refusals_agents":   result.refusals_total,
+        "n_mutations":       len(result.mutations),
+        "mutation_index_M":  (round(mutation_index(result.mutations), 4)
+                              if with_mutation and result.mutations else None),
         **milestones,
         **result.llm_stats,
     }
