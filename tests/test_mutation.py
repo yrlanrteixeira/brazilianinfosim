@@ -151,6 +151,19 @@ def test_mutation_index_por_assunto_usa_apenas_o_subconjunto():
 
 # ── mensagens compartilhadas ──────────────────────────────────────────────
 
+def test_filtro_de_assunto_ignora_acento():
+    """O guia de setup usa `--subjects saude`, sem acento."""
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    from run_mutation import filtra_subjects
+
+    assert list(filtra_subjects(SUBJECTS, "saude")) == ["Saúde/vacinas"]
+    assert list(filtra_subjects(SUBJECTS, "saúde")) == ["Saúde/vacinas"]
+    assert set(filtra_subjects(SUBJECTS, "saude,economia")) == {
+        "Saúde/vacinas", "Economia/benefícios",
+    }
+    assert filtra_subjects(SUBJECTS, "inexistente") == {}
+
+
 def test_subjects_compartilhado_tem_os_quatro_temas():
     assert set(SUBJECTS) == {
         "Saúde/vacinas",

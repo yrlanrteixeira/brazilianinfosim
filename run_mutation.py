@@ -21,6 +21,7 @@ Saídas em data/outputs/:
 """
 import argparse
 import sys
+import unicodedata
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
@@ -34,6 +35,20 @@ from metrics.analysis import (
 
 OUT_DIR = Path("data/outputs")
 DEFAULT_SEEDS = [42, 123, 999, 7, 2024, 55, 2026, 314, 1, 88]
+
+
+def sem_acento(texto: str) -> str:
+    """Normaliza para o filtro de assunto aceitar 'saude' e 'saúde'."""
+    return "".join(
+        c for c in unicodedata.normalize("NFD", texto.lower())
+        if unicodedata.category(c) != "Mn"
+    )
+
+
+def filtra_subjects(subjects: dict, filtros: str) -> dict:
+    alvos = [sem_acento(f.strip()) for f in filtros.split(",") if f.strip()]
+    return {k: v for k, v in subjects.items()
+            if any(a in sem_acento(k) for a in alvos)}
 
 
 def parse_args():
@@ -84,9 +99,7 @@ def main():
              else DEFAULT_SEEDS)
     subjects = SUBJECTS
     if args.subjects:
-        filtros = [f.strip().lower() for f in args.subjects.split(",")]
-        subjects = {k: v for k, v in SUBJECTS.items()
-                    if any(f in k.lower() for f in filtros)}
+        subjects = filtra_subjects(SUBJECTS, args.subjects)
         if not subjects:
             sys.exit(f"Nenhum assunto casou com {args.subjects!r}")
 
