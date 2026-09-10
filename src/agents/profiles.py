@@ -37,6 +37,16 @@ class Education(str, Enum):
     SUPERIOR    = "superior"
 
 
+# ── Parâmetros aplicados na conversão para fact-checker (intervenção) ──────
+# A intervenção precisa alterar os parâmetros que REALMENTE guiam a decisão,
+# e não apenas o rótulo agent_type.
+FACTCHECKER_CONVERSION = dict(
+    skepticism=0.90,
+    share_propensity=0.05,
+    confirmation_bias=0.10,
+)
+
+
 @dataclass
 class AgentProfile:
     """Perfil comportamental estático de um agente."""
@@ -54,6 +64,25 @@ class AgentProfile:
     region: Region
     education: Education
     uses_whatsapp: bool = True
+
+    # Marca se este agente foi convertido por uma intervenção (para análise)
+    converted_by_intervention: bool = False
+
+    def apply_factchecker_conversion(self) -> None:
+        """
+        Converte o agente em fact-checker de forma efetiva.
+
+        Antes desta correção a intervenção alterava apenas `agent_type`, que não
+        é lido por `to_prompt_description()` — logo o LLM continuava recebendo a
+        mesma descrição de antes e a intervenção era um no-op comportamental.
+        Agora a conversão altera os três parâmetros que guiam a decisão (e que
+        também compõem a chave do cache semântico).
+        """
+        self.agent_type        = AgentType.FACTCHECKER
+        self.skepticism        = FACTCHECKER_CONVERSION["skepticism"]
+        self.share_propensity  = FACTCHECKER_CONVERSION["share_propensity"]
+        self.confirmation_bias = FACTCHECKER_CONVERSION["confirmation_bias"]
+        self.converted_by_intervention = True
 
     def to_prompt_description(self) -> str:
         """Gera descrição em português para injetar no prompt do LLM."""
@@ -77,12 +106,31 @@ class AgentProfile:
             else "compartilha com moderação" if self.share_propensity > 0.4
             else "raramente compartilha"
         )
+        # O viés de confirmação era amostrado e nunca chegava ao LLM.
+        bias_label = (
+            "tende a aceitar sem questionar aquilo que confirma o que já acredita"
+            if self.confirmation_bias > 0.6
+            else "avalia informações com relativa imparcialidade"
+            if self.confirmation_bias > 0.35
+            else "procura evidências contrárias antes de aceitar uma informação"
+        )
+        # O papel de fact-checker é um repertório de comportamento (verificar e
+        # corrigir) que os parâmetros numéricos não expressam. Sem isto, nem os
+        # fact-checkers nativos eram descritos como tal ao LLM.
+        role_note = (
+            " Você tem o hábito de verificar informações em fontes confiáveis "
+            "antes de repassar qualquer coisa e de publicar correções quando "
+            "identifica conteúdo falso circulando."
+            if self.agent_type == AgentType.FACTCHECKER else ""
+        )
         return (
             f"Você é uma pessoa {age_map[self.age_group]}, "
             f"com {edu_map[self.education]}, da região {self.region.value} do Brasil. "
             f"Você é {skepticism_label} em relação a informações que recebe. "
             f"Você {share_label} conteúdo nas redes sociais. "
+            f"Você {bias_label}. "
             f"{'Usa WhatsApp frequentemente.' if self.uses_whatsapp else ''}"
+            f"{role_note}"
         )
 
 

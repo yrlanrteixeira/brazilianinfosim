@@ -29,13 +29,20 @@ class Message:
     original_content: str
     hops: int = 0               # quantos compartilhamentos já ocorreram
     sender_id: Optional[int] = None
+    # Versão imediatamente anterior do conteúdo. Necessário para o índice de
+    # mutação semântica do artigo, que compara versões CONSECUTIVAS
+    # (cossim(e_t, e_{t-1})) e não cada versão contra o original.
+    parent_content: Optional[str] = None
 
-    def mutate(self, new_content: str) -> "Message":
+    def mutate(self, new_content: str, sender_id: Optional[int] = None) -> "Message":
         return Message(
             content=new_content,
             original_content=self.original_content,
             hops=self.hops + 1,
-            sender_id=self.sender_id,
+            # Antes propagava self.sender_id (o remetente ANTERIOR), atribuindo
+            # a mutação ao agente errado na cadeia de propagação.
+            sender_id=sender_id if sender_id is not None else self.sender_id,
+            parent_content=self.content,
         )
 
     def forward(self, sender_id: int) -> "Message":
@@ -44,6 +51,7 @@ class Message:
             original_content=self.original_content,
             hops=self.hops + 1,
             sender_id=sender_id,
+            parent_content=self.content,
         )
 
 
@@ -73,10 +81,17 @@ class InfoAgent(mesa.Agent):
         self.received_contents: set[str] = set()
         self.belief_level: float = 0.5   # 0=desacredita, 1=acredita totalmente
         self.interaction_history: list[dict] = []
+        self.refusal_count: int = 0      # recusas do LLM (guardrail) neste agente
 
     @property
     def has_seen_disinformation(self) -> bool:
         return len(self.received_contents) > 0
+
+    @property
+    def mutated_messages(self) -> list[Message]:
+        """Mensagens que este agente enviou com conteúdo alterado."""
+        return [m for m in self.sent_messages
+                if m.parent_content is not None and m.content != m.parent_content]
 
     def receive(self, message: Message) -> None:
         """Chamado pelo motor de simulação para entregar uma mensagem."""
@@ -101,25 +116,30 @@ class InfoAgent(mesa.Agent):
         self.inbox.clear()
 
     def _handle_indifferent(self, message: Message) -> None:
-        import random
+        # Usava `random` global (não semeado), tornando a ignição de sementes
+        # indiferentes irreprodutível entre execuções. Agora usa o RNG do modelo.
         self.received_contents.add(message.content)
-        if random.random() < 0.10:   # 10% de chance de compartilhar
+        if self.model.rng.random() < 0.10:   # 10% de chance de compartilhar
             self._broadcast(message.forward(self.node_id))
 
     def _process_message(self, message: Message) -> None:
         self.received_contents.add(message.content)
 
-        decision, new_content = self.llm.decide(
+        decision, new_content, refused = self.llm.decide(
             agent_description=self.profile.to_prompt_description(),
             message_content=message.content,
             history=self.interaction_history[-5:],  # últimas 5 interações
         )
+
+        if refused:
+            self.refusal_count += 1
 
         self.interaction_history.append({
             "tick": self.model.tick,
             "received": message.content,
             "decision": decision.value,
             "sent": new_content,
+            "refused": refused,   # distingue recusa do LLM de decisão do perfil
         })
 
         if decision == Decision.IGNORE or decision == Decision.QUESTION:
@@ -133,6 +153,7 @@ class InfoAgent(mesa.Agent):
                 original_content=message.original_content,
                 hops=message.hops + 1,
                 sender_id=self.node_id,
+                parent_content=message.content,
             )
             self._broadcast(refutation)
 
@@ -142,12 +163,15 @@ class InfoAgent(mesa.Agent):
 
         elif decision == Decision.MUTATE:
             self.belief_level = min(1.0, self.belief_level + 0.10)
-            mutated = message.mutate(new_content)
+            mutated = message.mutate(new_content, sender_id=self.node_id)
             self._broadcast(mutated)
 
     def _broadcast(self, message: Message) -> None:
         """Envia mensagem para todos os vizinhos no grafo."""
         self.sent_messages.append(message)
+        # Nós removidos por remove_hubs saem do grafo; evita NetworkXError.
+        if self.node_id not in self.model.G:
+            return
         neighbors = list(self.model.G.neighbors(self.node_id))
         for neighbor_id in neighbors:
             neighbor = self.model.agents_by_id.get(neighbor_id)
