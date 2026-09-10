@@ -30,6 +30,25 @@ def _cossim(a, b) -> float:
     return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b) + 1e-9))
 
 
+_ENCODE_MEMO: dict[str, object] = {}
+
+
+def reset_encode_memo() -> None:
+    """Limpa o memo. Necessário ao trocar de embedder (testes)."""
+    _ENCODE_MEMO.clear()
+
+
+def _encode(text: str):
+    """
+    Encoding memoizado. A agregação de mutação compara content, parent e
+    original de cada linha, e os mesmos textos reaparecem entre linhas: sem
+    memo, o embedder é chamado várias vezes para o mesmo texto.
+    """
+    if text not in _ENCODE_MEMO:
+        _ENCODE_MEMO[text] = _get_embedder().encode(text)
+    return _ENCODE_MEMO[text]
+
+
 def semantic_mutation_rate(messages: list[str], original: str) -> float:
     """
     Similaridade média de cosseno entre as mensagens mutadas e a original.
@@ -59,13 +78,14 @@ def mutation_index(mutations: list[dict]) -> float:
     Cada item de `mutations` traz `content` (versão t) e `parent_content`
     (versão t-1). Retorna 0 para fidelidade total e 1 para distorção total.
     """
+    # `pd.isna` é necessário porque as mutações podem vir de CSV, onde um
+    # parent ausente volta como NaN, que é truthy.
     pares = [(m["content"], m["parent_content"]) for m in mutations
-             if m.get("parent_content")]
+             if m.get("parent_content") and not pd.isna(m["parent_content"])]
     if not pares:
         return 0.0
     try:
-        model = _get_embedder()
-        vals = [1.0 - _cossim(model.encode(atual), model.encode(anterior))
+        vals = [1.0 - _cossim(_encode(atual), _encode(anterior))
                 for atual, anterior in pares]
         return float(np.mean(vals))
     except ImportError:
@@ -81,7 +101,7 @@ def mutation_by_hop(mutations: list[dict]) -> pd.DataFrame:
     if not mutations:
         return pd.DataFrame(columns=cols)
     try:
-        model = _get_embedder()
+        _get_embedder()
     except ImportError:
         return pd.DataFrame(columns=cols)
 
@@ -89,11 +109,11 @@ def mutation_by_hop(mutations: list[dict]) -> pd.DataFrame:
     for hop, grupo in pd.DataFrame(mutations).groupby("hop"):
         consec, vs_orig = [], []
         for _, r in grupo.iterrows():
-            e_t = model.encode(r["content"])
-            if r.get("parent_content"):
-                consec.append(1.0 - _cossim(e_t, model.encode(r["parent_content"])))
-            if r.get("original_content"):
-                vs_orig.append(1.0 - _cossim(e_t, model.encode(r["original_content"])))
+            e_t = _encode(r["content"])
+            if r.get("parent_content") and not pd.isna(r["parent_content"]):
+                consec.append(1.0 - _cossim(e_t, _encode(r["parent_content"])))
+            if r.get("original_content") and not pd.isna(r["original_content"]):
+                vs_orig.append(1.0 - _cossim(e_t, _encode(r["original_content"])))
         linhas.append({
             "hop": int(hop),
             "n": len(grupo),
@@ -202,6 +222,40 @@ def plot_simulation(result: "SimulationResult", save_path: str = None) -> None:
         for bar, val in zip(bars, reach_by_type.values):
             ax3.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 2,
                      f"{val:.0f}%", ha="center", fontsize=8)
+
+    plt.tight_layout()
+    if save_path:
+        plt.savefig(save_path, dpi=150, bbox_inches="tight")
+        print(f"Gráfico salvo em: {save_path}")
+    else:
+        plt.show()
+
+
+def plot_mutation_by_hop(df: pd.DataFrame, save_path: str = None) -> None:
+    """
+    Painel de mutação semântica por hop (QP3). Espera as colunas hop, n, M,
+    M_vs_original e, opcionalmente, subject para uma série por assunto.
+    """
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13, 4.8))
+    fig.suptitle(
+        "Mutação semântica ao longo da cascata (QP3)",
+        fontsize=13, fontweight="bold"
+    )
+
+    grupos = df.groupby("subject") if "subject" in df.columns else [("todos", df)]
+    for nome, g in grupos:
+        g = g.sort_values("hop")
+        ax1.plot(g["hop"], g["M"], marker="o", linewidth=1.8, label=nome)
+        ax2.plot(g["hop"], g["M_vs_original"], marker="o", linewidth=1.8, label=nome)
+
+    ax1.set_title("M entre versões consecutivas")
+    ax1.set_ylabel("M (0 = fidelidade, 1 = distorção)")
+    ax2.set_title("Distorção acumulada vs. mensagem original")
+    ax2.set_ylabel("1 - cossim(versão, original)")
+    for ax in (ax1, ax2):
+        ax.set_xlabel("Hop")
+        ax.grid(alpha=0.3)
+        ax.legend(fontsize=8)
 
     plt.tight_layout()
     if save_path:
