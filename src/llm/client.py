@@ -14,13 +14,7 @@ Configuração via variáveis de ambiente:
   ENABLE_CACHE          = "true" | "false"        (default: "true")
   CACHE_MODE            = "exact" | "semantic" | "off"   (default: "exact")
   CACHE_SIMILARITY_THRESHOLD = float [0,1]        (default: 0.92, só no modo semantic)
-
-Sobre o cache: o modo "semantic" era o default até o TCC I e comparava o
-embedding do prompt INTEIRO por similaridade de cosseno. Como o template fixo
-é três vezes maior que a descrição do agente, ele domina o embedding e
-prompts de perfis opostos ficam acima do limiar. O default agora é "exact",
-que exige situação idêntica. O modo "semantic" fica disponível apenas para
-quantificar o artefato nos resultados antigos.
+  LLM_TEMPERATURE       = float                   (default: 0.3)
 """
 
 from __future__ import annotations
@@ -90,17 +84,31 @@ REFUSAL_MARKERS = (
 
 CACHE_MODES = ("exact", "semantic", "off")
 
+# Valor usado no TCC I: alterar quebra a comparação com os resultados já publicados.
+DEFAULT_TEMPERATURE = 0.3
+
+
+def parse_decision(bruto: str) -> Optional[Decision]:
+    """
+    Converte o label do modelo em Decision, tolerando typo (`QUESTRONAR`).
+    Devolve None se não casar com nenhum label válido.
+    """
+    if not bruto:
+        return None
+    normalizado = bruto.strip().upper().replace(" ", "_")
+    validos = {d.value for d in Decision}
+    if normalizado in validos:
+        return Decision(normalizado)
+
+    import difflib
+    candidatos = difflib.get_close_matches(normalizado, validos, n=1, cutoff=0.85)
+    return Decision(candidatos[0]) if candidatos else None
+
 
 def _resolve_cache_mode(
     cache_mode: Optional[str], enable_cache: Optional[bool]
 ) -> str:
-    """
-    Precedência: argumento explícito, depois enable_cache=False, depois env.
-
-    `semantic` é o modo do TCC I e fica disponível só para medir o artefato
-    que ele introduz: com limiar 0,92 o template do prompt domina o embedding
-    e prompts de perfis opostos dão hit. Não use em campanha nova.
-    """
+    """Precedência: argumento explícito, depois enable_cache=False, depois env."""
     if cache_mode is None and enable_cache is False:
         cache_mode = "off"
     if cache_mode is None:
@@ -114,9 +122,9 @@ def _resolve_cache_mode(
             f"cache_mode inválido: {cache_mode!r}. Use um de {CACHE_MODES}."
         )
     if cache_mode == "semantic":
+        # O template do prompt domina o embedding e perfis opostos dão hit.
         logger.warning(
-            "cache_mode='semantic' reproduz o colapso de perfis do TCC I. "
-            "Use apenas para quantificar o artefato."
+            "cache_mode='semantic' colapsa perfis distintos na mesma resposta."
         )
     return cache_mode
 
@@ -141,7 +149,8 @@ class LLMProvider(ABC):
     """Interface comum para todos os provedores de LLM."""
 
     @abstractmethod
-    def complete(self, prompt: str, max_tokens: int = 300) -> str:
+    def complete(self, prompt: str, max_tokens: int = 300,
+                 temperature: float = DEFAULT_TEMPERATURE) -> str:
         """Executa a chamada ao LLM e retorna o texto bruto."""
         ...
 
@@ -170,10 +179,12 @@ class AnthropicProvider(LLMProvider):
         self.client = anthropic.Anthropic(api_key=api_key)
         self._model = model
 
-    def complete(self, prompt: str, max_tokens: int = 300) -> str:
+    def complete(self, prompt: str, max_tokens: int = 300,
+                 temperature: float = DEFAULT_TEMPERATURE) -> str:
         response = self.client.messages.create(
             model=self._model,
             max_tokens=max_tokens,
+            temperature=temperature,
             messages=[{"role": "user", "content": prompt}],
         )
         return response.content[0].text.strip()
@@ -208,13 +219,13 @@ class OllamaProvider(LLMProvider):
         self._model = model
         self.base_url = base_url
 
-    def complete(self, prompt: str, max_tokens: int = 300) -> str:
+    def complete(self, prompt: str, max_tokens: int = 300,
+                 temperature: float = DEFAULT_TEMPERATURE) -> str:
         response = self.client.chat.completions.create(
             model=self._model,
             max_tokens=max_tokens,
             messages=[{"role": "user", "content": prompt}],
-            # Pede resposta determinística para reprodutibilidade
-            temperature=0.3,
+            temperature=temperature,
         )
         return response.choices[0].message.content.strip()
 
@@ -276,8 +287,14 @@ class LLMClient:
         enable_cache: Optional[bool] = None,
         similarity_threshold: Optional[float] = None,
         cache_mode: Optional[str] = None,
+        temperature: Optional[float] = None,
     ):
         self.provider = make_provider(provider=provider, model=model)
+        if temperature is None:
+            temperature = float(
+                os.environ.get("LLM_TEMPERATURE", DEFAULT_TEMPERATURE)
+            )
+        self.temperature = temperature
 
         # Cache config (env var tem prioridade se argumento não for passado)
         if enable_cache is None:
@@ -290,8 +307,7 @@ class LLMClient:
         self.cache_mode = _resolve_cache_mode(cache_mode, enable_cache)
         self.enable_cache = self.cache_mode != "off"
         self.similarity_threshold = similarity_threshold
-        # Chave exata: prompt inteiro. Inclui descrição do agente, mensagem e
-        # histórico, então um hit exige situação idêntica.
+        # Chaveado pelo prompt inteiro: um hit exige situação idêntica.
         self._exact: dict[str, dict] = {}
         self._cache: list[dict] = []
         self._embedder = None
@@ -332,9 +348,7 @@ class LLMClient:
             return None
         import numpy as np
 
-        # Antes era um laço Python com np.dot por entrada — O(n) em chamadas
-        # Python, o que virava o custo dominante em campanhas grandes.
-        # Agora é um único produto matriz-vetor.
+        # Produto matriz-vetor: o laço em Python dominava o custo.
         if self._emb_matrix is None or self._emb_matrix.shape[0] != len(self._cache):
             self._rebuild_matrix()
 
@@ -389,9 +403,7 @@ class LLMClient:
         Returns:
             (Decision, conteúdo a enviar, recusado_por_guardrail)
 
-        O terceiro elemento é novo: antes, uma recusa do modelo era
-        indistinguível de o agente decidir IGNORAR — o que misturava duas
-        coisas cientificamente opostas na mesma categoria.
+        Recusa por guardrail vem separada de IGNORAR: são coisas opostas.
         """
         history_block = ""
         if history:
@@ -421,9 +433,13 @@ class LLMClient:
         self._call_count += 1
         raw = ""
         try:
-            raw = self.provider.complete(prompt=prompt, max_tokens=300)
+            raw = self.provider.complete(
+                prompt=prompt, max_tokens=300, temperature=self.temperature
+            )
             parsed = self._extract_json(raw)
-            decision = Decision(parsed.get("decision", Decision.IGNORE.value))
+            decision = parse_decision(str(parsed.get("decision", "")))
+            if decision is None:
+                raise ValueError(f"label desconhecido: {parsed.get('decision')!r}")
             content = parsed.get("content", "")
             self._add_to_cache(
                 prompt, {"decision": decision.value, "content": content, "refused": False}
@@ -466,6 +482,7 @@ class LLMClient:
             "provider": self.provider.name,
             "model": self.provider.model,
             "cache_mode": self.cache_mode,
+            "temperature": self.temperature,
             "api_calls": self._call_count,
             "cache_hits": self._cache_hits,
             "cache_hit_rate": f"{hit_rate:.1%}",

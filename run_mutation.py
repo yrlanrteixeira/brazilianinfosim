@@ -6,20 +6,21 @@ Pergunta: a mensagem se distorce ao longo da cascata, e isso varia por assunto?
 Varia 4 temas x N sementes com topologia scale-free e ponto de injeção (hub)
 fixos, para isolar o assunto como único fator.
 
-O cache semântico fica DESLIGADO: um hit devolve o mesmo `content` gerado
-antes, então mutações repetidas entrariam idênticas no índice e mediriam
-distorção zero por artefato de implementação.
-
-As mutações cruas são persistidas antes de qualquer cálculo de embedding, de
-modo que o índice e os gráficos possam ser refeitos sem re-executar o LLM.
+Roda sem cache: um hit devolveria o mesmo `content`, e mutações idênticas
+mediriam distorção zero. As mutações cruas são persistidas antes do cálculo de
+embedding, para que o índice possa ser refeito sem re-executar o LLM.
 
 Saídas em data/outputs/:
   <prefix>_raw.csv        uma linha por mensagem mutada
   <prefix>_runs.csv       resumo por run
   <prefix>_by_hop.csv     índice agregado por hop e assunto
-  fig_mutacao.png         painel de mutação por hop
+  fig_<prefix>.png        painel de mutação por hop
+
+Campanha longa roda por partes (`--subjects economia --prefix mut_economia`) e
+depois consolida com `--from-raw "data/outputs/mut_*_raw.csv"`.
 """
 import argparse
+import glob
 import sys
 import unicodedata
 from pathlib import Path
@@ -60,10 +61,26 @@ def parse_args():
                    help="filtra assuntos por substring, separados por vírgula")
     p.add_argument("--prefix", type=str, default="mutation",
                    help="prefixo dos CSVs de saída")
+    p.add_argument("--temperature", type=float, default=1.0,
+                   help="temperatura do modelo (a 0.3 a mutação não ocorre)")
+    p.add_argument("--from-raw", type=str, default=None,
+                   help="agrega CSVs crus já existentes (glob) sem rodar o LLM")
     return p.parse_args()
 
 
-def run_campaign(subjects: dict, seeds: list[int], n_agents: int) -> tuple[list, list]:
+def carrega_raw(padrao: str) -> list[dict]:
+    """Junta os CSVs crus de campanhas rodadas por partes."""
+    arquivos = sorted(glob.glob(padrao))
+    if not arquivos:
+        sys.exit(f"Nenhum arquivo casou com {padrao!r}")
+    dfs = [pd.read_csv(a) for a in arquivos]
+    print(f"Agregando {len(arquivos)} arquivo(s): "
+          f"{', '.join(Path(a).name for a in arquivos)}", flush=True)
+    return pd.concat(dfs, ignore_index=True).to_dict("records")
+
+
+def run_campaign(subjects: dict, seeds: list[int], n_agents: int,
+                 temperature: float) -> tuple[list, list]:
     """Executa a campanha e devolve (resumos por run, mutações cruas)."""
     raw, rows = [], []
     total = len(subjects) * len(seeds)
@@ -75,10 +92,11 @@ def run_campaign(subjects: dict, seeds: list[int], n_agents: int) -> tuple[list,
                 n_agents=n_agents, topology=Topology.SCALE_FREE, max_ticks=100,
                 seed=seed, initial_message=msg, intervention=None,
                 inject_at="hub", enable_cache=False,
+                temperature=temperature,
             )
             result = InfoSimModel(cfg).run()
 
-            # with_mutation=False: o embedder roda depois, em lote
+            # O embedder roda depois, em lote.
             s = summarize_result(result, with_mutation=False)
             s.update(subject=subject, seed=seed, cache_enabled=False)
             rows.append(s)
@@ -95,6 +113,11 @@ def run_campaign(subjects: dict, seeds: list[int], n_agents: int) -> tuple[list,
 
 def main():
     args = parse_args()
+    if args.from_raw:
+        OUT_DIR.mkdir(parents=True, exist_ok=True)
+        agrega(carrega_raw(args.from_raw), args.prefix)
+        return
+
     seeds = ([int(x) for x in args.seeds.split(",")] if args.seeds
              else DEFAULT_SEEDS)
     subjects = SUBJECTS
@@ -104,7 +127,7 @@ def main():
             sys.exit(f"Nenhum assunto casou com {args.subjects!r}")
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    rows, raw = run_campaign(subjects, seeds, args.n_agents)
+    rows, raw = run_campaign(subjects, seeds, args.n_agents, args.temperature)
 
     runs_csv = OUT_DIR / f"{args.prefix}_runs.csv"
     pd.DataFrame(rows).to_csv(runs_csv, index=False)
@@ -118,10 +141,14 @@ def main():
     pd.DataFrame(raw).to_csv(raw_csv, index=False)
     print(f"{raw_csv} salvo ({len(raw)} mutações)", flush=True)
 
-    # ── Agregação (única etapa que usa embeddings) ────────────────────────
+    agrega(raw, args.prefix)
+
+
+def agrega(raw: list[dict], prefix: str) -> None:
+    """Calcula o índice e os gráficos. Única etapa que usa embeddings."""
     por_assunto = []
     por_hop = []
-    for subject in subjects:
+    for subject in dict.fromkeys(m["subject"] for m in raw):
         muts = [m for m in raw if m["subject"] == subject]
         if not muts:
             continue
@@ -135,7 +162,7 @@ def main():
         por_hop.append(df_hop)
 
     df_hop = pd.concat(por_hop, ignore_index=True)
-    hop_csv = OUT_DIR / f"{args.prefix}_by_hop.csv"
+    hop_csv = OUT_DIR / f"{prefix}_by_hop.csv"
     df_hop.to_csv(hop_csv, index=False)
     print(f"{hop_csv} salvo", flush=True)
 
@@ -145,7 +172,7 @@ def main():
     print("\n=== Mutação por hop ===", flush=True)
     print(df_hop.round(4).to_string(index=False), flush=True)
 
-    plot_mutation_by_hop(df_hop, save_path=str(OUT_DIR / "fig_mutacao.png"))
+    plot_mutation_by_hop(df_hop, save_path=str(OUT_DIR / f"fig_{prefix}.png"))
     print("DONE_MUTATION", flush=True)
 
 

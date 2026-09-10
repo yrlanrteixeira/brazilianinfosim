@@ -29,9 +29,7 @@ class Message:
     original_content: str
     hops: int = 0               # quantos compartilhamentos já ocorreram
     sender_id: Optional[int] = None
-    # Versão imediatamente anterior do conteúdo. Necessário para o índice de
-    # mutação semântica do artigo, que compara versões CONSECUTIVAS
-    # (cossim(e_t, e_{t-1})) e não cada versão contra o original.
+    # Versão anterior: o índice de mutação compara versões consecutivas.
     parent_content: Optional[str] = None
 
     def mutate(self, new_content: str, sender_id: Optional[int] = None) -> "Message":
@@ -163,8 +161,11 @@ class InfoAgent(mesa.Agent):
 
         elif decision == Decision.MUTATE:
             self.belief_level = min(1.0, self.belief_level + 0.10)
-            mutated = message.mutate(new_content, sender_id=self.node_id)
-            self._broadcast(mutated)
+            # O modelo às vezes muta com `content` vazio: repassa sem alterar.
+            if new_content.strip():
+                self._broadcast(message.mutate(new_content, sender_id=self.node_id))
+            else:
+                self._broadcast(message.forward(self.node_id))
 
     def _broadcast(self, message: Message) -> None:
         """Envia mensagem para todos os vizinhos no grafo."""

@@ -39,11 +39,7 @@ def reset_encode_memo() -> None:
 
 
 def _encode(text: str):
-    """
-    Encoding memoizado. A agregação de mutação compara content, parent e
-    original de cada linha, e os mesmos textos reaparecem entre linhas: sem
-    memo, o embedder é chamado várias vezes para o mesmo texto.
-    """
+    """Encoding memoizado: os mesmos textos reaparecem entre linhas."""
     if text not in _ENCODE_MEMO:
         _ENCODE_MEMO[text] = _get_embedder().encode(text)
     return _ENCODE_MEMO[text]
@@ -78,8 +74,7 @@ def mutation_index(mutations: list[dict]) -> float:
     Cada item de `mutations` traz `content` (versão t) e `parent_content`
     (versão t-1). Retorna 0 para fidelidade total e 1 para distorção total.
     """
-    # `pd.isna` é necessário porque as mutações podem vir de CSV, onde um
-    # parent ausente volta como NaN, que é truthy.
+    # Vindo de CSV, um parent ausente volta como NaN, que é truthy.
     pares = [(m["content"], m["parent_content"]) for m in mutations
              if m.get("parent_content") and not pd.isna(m["parent_content"])]
     if not pares:

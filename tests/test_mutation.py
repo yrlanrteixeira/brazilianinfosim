@@ -2,10 +2,8 @@
 tests/test_mutation.py
 
 Testes do índice de mutação semântica (QP3) e da persistência das mutações.
-
-O embedder real (sentence-transformers) é substituído por um encoder falso
-determinístico: os testes rodam offline e em milissegundos, e as asserções
-passam a ser sobre a agregação, que é o que o código faz de fato.
+O embedder é substituído por um encoder falso determinístico, para os testes
+rodarem offline e as asserções serem sobre a agregação.
 """
 
 import sys
@@ -94,10 +92,7 @@ def test_mutation_by_hop_vazio_retorna_dataframe_com_colunas():
 
 
 def test_mutation_by_hop_nao_reencoda_o_mesmo_texto(monkeypatch):
-    """
-    O memo de encoding existe porque a agregação compara content, parent e
-    original de cada linha, e os mesmos textos reaparecem entre linhas.
-    """
+    """A agregação compara content, parent e original: textos se repetem."""
     chamadas = []
 
     class Contador(FakeEmbedder):
@@ -117,10 +112,7 @@ def test_mutation_by_hop_nao_reencoda_o_mesmo_texto(monkeypatch):
 # ── persistência ──────────────────────────────────────────────────────────
 
 def test_round_trip_csv_preserva_colunas_do_indice(tmp_path):
-    """
-    O M é calculado depois da campanha, a partir do CSV bruto. Se o round-trip
-    perder uma coluna, o recálculo silenciosamente muda de valor.
-    """
+    """O M é recalculado a partir do CSV: perder coluna muda o valor."""
     muts = [_mut(1, "b", "a"), _mut(2, "c", "b")]
     esperado = analysis.mutation_index(muts)
 
@@ -162,6 +154,31 @@ def test_filtro_de_assunto_ignora_acento():
         "Saúde/vacinas", "Economia/benefícios",
     }
     assert filtra_subjects(SUBJECTS, "inexistente") == {}
+
+
+def test_carrega_raw_junta_varios_csvs(tmp_path):
+    """A campanha roda por assunto: a agregação junta os pedaços."""
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    from run_mutation import carrega_raw
+
+    for nome, assunto in [("a", "Saúde/vacinas"), ("b", "Economia/benefícios")]:
+        pd.DataFrame([dict(_mut(1, "b", "a"), subject=assunto)]).to_csv(
+            tmp_path / f"mut_{nome}_raw.csv", index=False
+        )
+
+    registros = carrega_raw(str(tmp_path / "mut_*_raw.csv"))
+    assert len(registros) == 2
+    assert {r["subject"] for r in registros} == {
+        "Saúde/vacinas", "Economia/benefícios",
+    }
+
+
+def test_carrega_raw_sem_arquivo_falha_visivelmente(tmp_path):
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    from run_mutation import carrega_raw
+
+    with pytest.raises(SystemExit):
+        carrega_raw(str(tmp_path / "nao_existe_*.csv"))
 
 
 def test_subjects_compartilhado_tem_os_quatro_temas():

@@ -1,16 +1,11 @@
 """
 tests/test_cache.py
 
-Testes do cache de decisões.
+Testes do cache de decisões. Regressão do bug em que a chave era o embedding
+do prompt inteiro: o template dominava a similaridade e perfis opostos
+compartilhavam a mesma resposta.
 
-O bug: a chave era o embedding do prompt INTEIRO, comparado por similaridade
-de cosseno com limiar 0,92. O `DECISION_PROMPT` tem cerca de 1000 caracteres
-fixos e a descrição do agente tem cerca de 300, então o template domina o
-embedding: prompts de perfis opostos ficam acima do limiar e um único agente
-respondia por todos. Nos CSVs do TCC I isso aparece como 0 a 2 chamadas reais
-por simulação contra dezenas ou centenas de cache hits.
-
-Rodam sem LLM: o provider é substituído por um fake que conta chamadas.
+Rodam sem LLM: o provider é um fake que conta chamadas.
 """
 
 import sys
@@ -35,7 +30,8 @@ class FakeProvider:
     def __init__(self):
         self.calls = []
 
-    def complete(self, prompt: str, max_tokens: int = 300) -> str:
+    def complete(self, prompt: str, max_tokens: int = 300,
+                 temperature: float = 0.3) -> str:
         self.calls.append(prompt)
         return json.dumps({
             "decision": Decision.SHARE.value,
@@ -84,9 +80,7 @@ def _decide(client, perfil, msg, history=None):
 # ── Regressão do colapso ──────────────────────────────────────────────────
 
 def test_perfis_opostos_nao_compartilham_entrada_de_cache(monkeypatch):
-    """
-    O bug em uma linha: amplificador e cético, mesma mensagem, davam hit.
-    """
+    """O bug em uma linha: amplificador e cético, mesma mensagem, davam hit."""
     client, fake = _client(monkeypatch, cache_mode="exact")
     _decide(client, AMPLIFICADOR, MSG_A)
     _decide(client, CETICO, MSG_A)
@@ -158,12 +152,7 @@ def test_enable_cache_false_ainda_desliga(monkeypatch):
 # ── O artefato, preservado para poder ser medido ──────────────────────────
 
 def test_modo_semantic_ainda_colapsa_perfis_opostos(monkeypatch):
-    """
-    Documenta o artefato em vez de apagá-lo: o modo semântico é mantido para
-    quantificar quanto dos resultados do TCC I vinha do cache. Se este teste
-    passar a falhar, o limiar mudou e a comparação com os números antigos
-    deixa de ser válida.
-    """
+    """O modo é mantido para medir o artefato: trava o comportamento dele."""
     pytest.importorskip("sentence_transformers")
     client, fake = _client(monkeypatch, cache_mode="semantic",
                            similarity_threshold=0.92)
