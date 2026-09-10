@@ -83,11 +83,17 @@ class InfoSimModel(mesa.Model):
             )
             self.agents_by_id[node_id] = agent
 
+        # Nós removidos por intervenção (para a métrica de alcance ativo)
+        self.removed_nodes: list[int] = []
+
         # Coleta de dados por tick
         self.datacollector = mesa.DataCollector(
             model_reporters={
                 "reached_count": self._count_reached,
                 "reach_pct": lambda m: m._count_reached() / m.config.n_agents * 100,
+                "reach_pct_active": lambda m: (
+                    m._count_reached() / max(1, len(m.agents_by_id)) * 100
+                ),
                 "believers": self._count_believers,
                 "tick": lambda m: m.tick,
             },
@@ -134,14 +140,18 @@ class InfoSimModel(mesa.Model):
         if self.config.intervention == "factcheckers_hub":
             hubs = get_hub_nodes(self.G, top_k=max(1, self.config.n_agents // 10))
             for node_id in hubs:
-                self.agents_by_id[node_id].profile.agent_type = AgentType.FACTCHECKER
+                # Antes fazia apenas `profile.agent_type = AgentType.FACTCHECKER`,
+                # que não altera nada do que o LLM efetivamente lê.
+                self.agents_by_id[node_id].profile.apply_factchecker_conversion()
             logger.info(f"Intervenção: {len(hubs)} fact-checkers inseridos em hubs")
 
         elif self.config.intervention == "factcheckers_peripheral":
             from network.topology import get_peripheral_nodes
             peripheral = get_peripheral_nodes(self.G, bottom_k=max(1, self.config.n_agents // 10))
             for node_id in peripheral:
-                self.agents_by_id[node_id].profile.agent_type = AgentType.FACTCHECKER
+                # Antes fazia apenas `profile.agent_type = AgentType.FACTCHECKER`,
+                # que não altera nada do que o LLM efetivamente lê.
+                self.agents_by_id[node_id].profile.apply_factchecker_conversion()
             logger.info(f"Intervenção: {len(peripheral)} fact-checkers inseridos em nós periféricos")
 
         elif self.config.intervention == "remove_hubs":
@@ -149,6 +159,7 @@ class InfoSimModel(mesa.Model):
             self.G.remove_nodes_from(hubs)
             for node_id in hubs:
                 self.agents_by_id.pop(node_id).remove()
+            self.removed_nodes.extend(hubs)
             logger.info(f"Intervenção: {len(hubs)} supernós removidos da rede")
 
     def _count_reached(self) -> int:
@@ -156,6 +167,23 @@ class InfoSimModel(mesa.Model):
 
     def _count_believers(self) -> int:
         return sum(1 for a in self.agents_by_id.values() if a.belief_level > 0.5)
+
+    def _collect_mutations(self) -> list[dict]:
+        """
+        Reúne as mensagens mutadas da simulação, com hop e versão anterior —
+        insumo para o índice de mutação semântica (QP3).
+        """
+        return [
+            {
+                "hop": m.hops,
+                "content": m.content,
+                "parent_content": m.parent_content,
+                "original_content": m.original_content,
+                "sender_id": m.sender_id,
+            }
+            for agent in self.agents_by_id.values()
+            for m in agent.mutated_messages
+        ]
 
     def step(self) -> None:
         """Executa um tick de simulação."""
@@ -172,6 +200,7 @@ class InfoSimModel(mesa.Model):
         """Executa a simulação completa até max_ticks ou extinção."""
         prev_reached = 0
         stagnation_count = 0
+        reached = 0
 
         for tick in range(self.config.max_ticks):
             self.step()
@@ -201,6 +230,10 @@ class InfoSimModel(mesa.Model):
             final_reach_pct=reached / self.config.n_agents * 100,
             extinction_tick=self.tick,
             llm_stats=self.llm.stats,
+            final_reach_pct_active=reached / max(1, len(self.agents_by_id)) * 100,
+            mutations=self._collect_mutations(),
+            n_removed=len(self.removed_nodes),
+            refusals_total=sum(a.refusal_count for a in self.agents_by_id.values()),
         )
 
 
@@ -212,3 +245,10 @@ class SimulationResult:
     final_reach_pct: float
     extinction_tick: int
     llm_stats: dict
+    # Alcance sobre os nós que continuam na rede. Com remove_hubs, o
+    # denominador original (n_agents) faz o alcance máximo cair para 90% por
+    # construção, o que favorece essa intervenção artificialmente.
+    final_reach_pct_active: float = 0.0
+    mutations: list = field(default_factory=list)
+    n_removed: int = 0
+    refusals_total: int = 0
