@@ -27,8 +27,8 @@ class FakeEmbedder:
 
     def encode(self, text: str):
         rng = np.random.default_rng(abs(hash(text)) % (2**32))
-        v = rng.normal(size=16)
-        return v / np.linalg.norm(v)
+        vector = rng.normal(size=16)
+        return vector / np.linalg.norm(vector)
 
 
 @pytest.fixture(autouse=True)
@@ -51,88 +51,86 @@ def _mut(hop, content, parent, original="ORIGINAL"):
 
 # ── mutation_index ────────────────────────────────────────────────────────
 
-def test_mutation_index_zero_quando_texto_nao_muda():
-    muts = [_mut(1, "mesmo texto", "mesmo texto")]
-    assert analysis.mutation_index(muts) == pytest.approx(0.0, abs=1e-6)
+def test_mutation_index_is_zero_when_text_does_not_change():
+    mutations = [_mut(1, "mesmo texto", "mesmo texto")]
+    assert analysis.mutation_index(mutations) == pytest.approx(0.0, abs=1e-6)
 
 
-def test_mutation_index_alto_quando_texto_diverge():
-    muts = [_mut(1, "texto completamente outro", "mesmo texto")]
-    assert analysis.mutation_index(muts) > 0.5
+def test_mutation_index_is_high_when_text_diverges():
+    mutations = [_mut(1, "texto completamente outro", "mesmo texto")]
+    assert analysis.mutation_index(mutations) > 0.5
 
 
-def test_mutation_index_ignora_itens_sem_parent():
+def test_mutation_index_skips_items_without_parent():
     """Sem versão anterior não há par consecutivo para comparar."""
-    muts = [_mut(1, "a", None), _mut(2, "b", "b")]
-    assert analysis.mutation_index(muts) == pytest.approx(0.0, abs=1e-6)
+    mutations = [_mut(1, "a", None), _mut(2, "b", "b")]
+    assert analysis.mutation_index(mutations) == pytest.approx(0.0, abs=1e-6)
 
 
-def test_mutation_index_vazio_retorna_zero():
+def test_mutation_index_of_empty_input_is_zero():
     assert analysis.mutation_index([]) == 0.0
 
 
 # ── mutation_by_hop ───────────────────────────────────────────────────────
 
-def test_mutation_by_hop_agrupa_e_ordena():
-    muts = [
+def test_mutation_by_hop_groups_and_sorts():
+    mutations = [
         _mut(2, "c", "b"),
         _mut(1, "b", "a"),
         _mut(1, "b2", "a"),
     ]
-    df = analysis.mutation_by_hop(muts)
+    df = analysis.mutation_by_hop(mutations)
     assert list(df.columns) == ["hop", "n", "M", "M_vs_original"]
     assert list(df["hop"]) == [1, 2]
     assert list(df["n"]) == [2, 1]
 
 
-def test_mutation_by_hop_vazio_retorna_dataframe_com_colunas():
+def test_mutation_by_hop_of_empty_input_keeps_columns():
     df = analysis.mutation_by_hop([])
     assert df.empty
     assert list(df.columns) == ["hop", "n", "M", "M_vs_original"]
 
 
-def test_mutation_by_hop_nao_reencoda_o_mesmo_texto(monkeypatch):
+def test_mutation_by_hop_does_not_reencode_the_same_text(monkeypatch):
     """A agregação compara content, parent e original: textos se repetem."""
-    chamadas = []
+    calls = []
 
-    class Contador(FakeEmbedder):
+    class CountingEmbedder(FakeEmbedder):
         def encode(self, text: str):
-            chamadas.append(text)
+            calls.append(text)
             return super().encode(text)
 
-    monkeypatch.setattr(analysis, "_get_embedder", lambda: Contador())
+    monkeypatch.setattr(analysis, "_get_embedder", lambda: CountingEmbedder())
     analysis.reset_encode_memo()
 
-    muts = [_mut(1, "b", "a"), _mut(1, "b", "a"), _mut(2, "c", "b")]
-    analysis.mutation_by_hop(muts)
+    mutations = [_mut(1, "b", "a"), _mut(1, "b", "a"), _mut(2, "c", "b")]
+    analysis.mutation_by_hop(mutations)
 
-    assert len(chamadas) == len(set(chamadas))
+    assert len(calls) == len(set(calls))
 
 
 # ── persistência ──────────────────────────────────────────────────────────
 
-def test_round_trip_csv_preserva_colunas_do_indice(tmp_path):
+def test_csv_round_trip_preserves_the_index_columns(tmp_path):
     """O M é recalculado a partir do CSV: perder coluna muda o valor."""
-    muts = [_mut(1, "b", "a"), _mut(2, "c", "b")]
-    esperado = analysis.mutation_index(muts)
+    mutations = [_mut(1, "b", "a"), _mut(2, "c", "b")]
+    expected = analysis.mutation_index(mutations)
 
-    caminho = tmp_path / "mutations_raw.csv"
-    pd.DataFrame(muts).to_csv(caminho, index=False)
-    lidos = pd.read_csv(caminho).to_dict("records")
+    path = tmp_path / "mutations_raw.csv"
+    pd.DataFrame(mutations).to_csv(path, index=False)
+    reloaded = pd.read_csv(path).to_dict("records")
 
     analysis.reset_encode_memo()
-    assert analysis.mutation_index(lidos) == pytest.approx(esperado)
+    assert analysis.mutation_index(reloaded) == pytest.approx(expected)
 
 
-def test_mutation_index_por_assunto_usa_apenas_o_subconjunto():
+def test_mutation_index_per_subject_uses_only_that_subset():
     """Agregação por assunto não pode misturar pares de assuntos diferentes."""
-    muts_a = [_mut(1, "b", "a")]
-    muts_b = [_mut(1, "z", "z")]
-    linhas = (
-        [dict(m, subject="A") for m in muts_a]
-        + [dict(m, subject="B") for m in muts_b]
+    rows = (
+        [dict(_mut(1, "b", "a"), subject="A")]
+        + [dict(_mut(1, "z", "z"), subject="B")]
     )
-    df = pd.DataFrame(linhas)
+    df = pd.DataFrame(rows)
 
     m_a = analysis.mutation_index(df[df.subject == "A"].to_dict("records"))
     m_b = analysis.mutation_index(df[df.subject == "B"].to_dict("records"))
@@ -143,45 +141,45 @@ def test_mutation_index_por_assunto_usa_apenas_o_subconjunto():
 
 # ── mensagens compartilhadas ──────────────────────────────────────────────
 
-def test_filtro_de_assunto_ignora_acento():
+def test_subject_filter_ignores_accents():
     """O guia de setup usa `--subjects saude`, sem acento."""
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-    from run_mutation import filtra_subjects
+    from run_mutation import filter_subjects
 
-    assert list(filtra_subjects(SUBJECTS, "saude")) == ["Saúde/vacinas"]
-    assert list(filtra_subjects(SUBJECTS, "saúde")) == ["Saúde/vacinas"]
-    assert set(filtra_subjects(SUBJECTS, "saude,economia")) == {
+    assert list(filter_subjects(SUBJECTS, "saude")) == ["Saúde/vacinas"]
+    assert list(filter_subjects(SUBJECTS, "saúde")) == ["Saúde/vacinas"]
+    assert set(filter_subjects(SUBJECTS, "saude,economia")) == {
         "Saúde/vacinas", "Economia/benefícios",
     }
-    assert filtra_subjects(SUBJECTS, "inexistente") == {}
+    assert filter_subjects(SUBJECTS, "inexistente") == {}
 
 
-def test_carrega_raw_junta_varios_csvs(tmp_path):
+def test_load_raw_merges_several_csvs(tmp_path):
     """A campanha roda por assunto: a agregação junta os pedaços."""
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-    from run_mutation import carrega_raw
+    from run_mutation import load_raw
 
-    for nome, assunto in [("a", "Saúde/vacinas"), ("b", "Economia/benefícios")]:
-        pd.DataFrame([dict(_mut(1, "b", "a"), subject=assunto)]).to_csv(
-            tmp_path / f"mut_{nome}_raw.csv", index=False
+    for name, subject in [("a", "Saúde/vacinas"), ("b", "Economia/benefícios")]:
+        pd.DataFrame([dict(_mut(1, "b", "a"), subject=subject)]).to_csv(
+            tmp_path / f"mut_{name}_raw.csv", index=False
         )
 
-    registros = carrega_raw(str(tmp_path / "mut_*_raw.csv"))
-    assert len(registros) == 2
-    assert {r["subject"] for r in registros} == {
+    records = load_raw(str(tmp_path / "mut_*_raw.csv"))
+    assert len(records) == 2
+    assert {r["subject"] for r in records} == {
         "Saúde/vacinas", "Economia/benefícios",
     }
 
 
-def test_carrega_raw_sem_arquivo_falha_visivelmente(tmp_path):
+def test_load_raw_without_files_fails_loudly(tmp_path):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-    from run_mutation import carrega_raw
+    from run_mutation import load_raw
 
     with pytest.raises(SystemExit):
-        carrega_raw(str(tmp_path / "nao_existe_*.csv"))
+        load_raw(str(tmp_path / "nao_existe_*.csv"))
 
 
-def test_subjects_compartilhado_tem_os_quatro_temas():
+def test_shared_subjects_has_the_four_themes():
     assert set(SUBJECTS) == {
         "Saúde/vacinas",
         "Política/eleições",

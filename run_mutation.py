@@ -38,18 +38,18 @@ OUT_DIR = Path("data/outputs")
 DEFAULT_SEEDS = [42, 123, 999, 7, 2024, 55, 2026, 314, 1, 88]
 
 
-def sem_acento(texto: str) -> str:
+def strip_accents(text: str) -> str:
     """Normaliza para o filtro de assunto aceitar 'saude' e 'saúde'."""
     return "".join(
-        c for c in unicodedata.normalize("NFD", texto.lower())
+        c for c in unicodedata.normalize("NFD", text.lower())
         if unicodedata.category(c) != "Mn"
     )
 
 
-def filtra_subjects(subjects: dict, filtros: str) -> dict:
-    alvos = [sem_acento(f.strip()) for f in filtros.split(",") if f.strip()]
+def filter_subjects(subjects: dict, patterns: str) -> dict:
+    targets = [strip_accents(f.strip()) for f in patterns.split(",") if f.strip()]
     return {k: v for k, v in subjects.items()
-            if any(a in sem_acento(k) for a in alvos)}
+            if any(a in strip_accents(k) for a in targets)}
 
 
 def parse_args():
@@ -68,14 +68,14 @@ def parse_args():
     return p.parse_args()
 
 
-def carrega_raw(padrao: str) -> list[dict]:
+def load_raw(pattern: str) -> list[dict]:
     """Junta os CSVs crus de campanhas rodadas por partes."""
-    arquivos = sorted(glob.glob(padrao))
-    if not arquivos:
-        sys.exit(f"Nenhum arquivo casou com {padrao!r}")
-    dfs = [pd.read_csv(a) for a in arquivos]
-    print(f"Agregando {len(arquivos)} arquivo(s): "
-          f"{', '.join(Path(a).name for a in arquivos)}", flush=True)
+    files = sorted(glob.glob(pattern))
+    if not files:
+        sys.exit(f"Nenhum arquivo casou com {pattern!r}")
+    dfs = [pd.read_csv(a) for a in files]
+    print(f"Agregando {len(files)} arquivo(s): "
+          f"{', '.join(Path(a).name for a in files)}", flush=True)
     return pd.concat(dfs, ignore_index=True).to_dict("records")
 
 
@@ -115,14 +115,14 @@ def main():
     args = parse_args()
     if args.from_raw:
         OUT_DIR.mkdir(parents=True, exist_ok=True)
-        agrega(carrega_raw(args.from_raw), args.prefix)
+        aggregate(load_raw(args.from_raw), args.prefix)
         return
 
     seeds = ([int(x) for x in args.seeds.split(",")] if args.seeds
              else DEFAULT_SEEDS)
     subjects = SUBJECTS
     if args.subjects:
-        subjects = filtra_subjects(SUBJECTS, args.subjects)
+        subjects = filter_subjects(SUBJECTS, args.subjects)
         if not subjects:
             sys.exit(f"Nenhum assunto casou com {args.subjects!r}")
 
@@ -141,33 +141,33 @@ def main():
     pd.DataFrame(raw).to_csv(raw_csv, index=False)
     print(f"{raw_csv} salvo ({len(raw)} mutações)", flush=True)
 
-    agrega(raw, args.prefix)
+    aggregate(raw, args.prefix)
 
 
-def agrega(raw: list[dict], prefix: str) -> None:
+def aggregate(raw: list[dict], prefix: str) -> None:
     """Calcula o índice e os gráficos. Única etapa que usa embeddings."""
-    por_assunto = []
-    por_hop = []
+    by_subject = []
+    by_hop = []
     for subject in dict.fromkeys(m["subject"] for m in raw):
-        muts = [m for m in raw if m["subject"] == subject]
-        if not muts:
+        mutations = [m for m in raw if m["subject"] == subject]
+        if not mutations:
             continue
-        por_assunto.append({
+        by_subject.append({
             "subject": subject,
-            "n_mutations": len(muts),
-            "M": round(mutation_index(muts), 4),
+            "n_mutations": len(mutations),
+            "M": round(mutation_index(mutations), 4),
         })
-        df_hop = mutation_by_hop(muts)
+        df_hop = mutation_by_hop(mutations)
         df_hop["subject"] = subject
-        por_hop.append(df_hop)
+        by_hop.append(df_hop)
 
-    df_hop = pd.concat(por_hop, ignore_index=True)
+    df_hop = pd.concat(by_hop, ignore_index=True)
     hop_csv = OUT_DIR / f"{prefix}_by_hop.csv"
     df_hop.to_csv(hop_csv, index=False)
     print(f"{hop_csv} salvo", flush=True)
 
     print("\n=== Índice de mutação M por assunto ===", flush=True)
-    print(pd.DataFrame(por_assunto).sort_values("M", ascending=False)
+    print(pd.DataFrame(by_subject).sort_values("M", ascending=False)
           .to_string(index=False), flush=True)
     print("\n=== Mutação por hop ===", flush=True)
     print(df_hop.round(4).to_string(index=False), flush=True)

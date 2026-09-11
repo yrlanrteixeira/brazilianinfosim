@@ -24,16 +24,16 @@ from llm.client import LLMClient
 class FakeProvider:
     """Devolve as respostas cruas da fila, na ordem."""
 
-    def __init__(self, respostas):
-        self.respostas = list(respostas)
-        self.temperaturas = []
+    def __init__(self, responses):
+        self.responses = list(responses)
+        self.temperatures = []
         self.calls = 0
 
     def complete(self, prompt: str, max_tokens: int = 300,
                  temperature: float = None) -> str:
         self.calls += 1
-        self.temperaturas.append(temperature)
-        return self.respostas.pop(0)
+        self.temperatures.append(temperature)
+        return self.responses.pop(0)
 
     @property
     def name(self) -> str:
@@ -44,8 +44,8 @@ class FakeProvider:
         return "fake-model"
 
 
-def _client(monkeypatch, respostas, **kwargs):
-    fake = FakeProvider(respostas)
+def _client(monkeypatch, responses, **kwargs):
+    fake = FakeProvider(responses)
     monkeypatch.setattr("llm.client.make_provider", lambda **_: fake)
     return LLMClient(cache_mode="off", **kwargs), fake
 
@@ -61,7 +61,7 @@ def _decide(client):
 
 # ── Casamento tolerante de label ──────────────────────────────────────────
 
-@pytest.mark.parametrize("digitado,esperado", [
+@pytest.mark.parametrize("written,expected", [
     ("COM_PARTILHAR", Decision.SHARE),
     ("QUESTRONAR", Decision.QUESTION),
     ("QUESTOINAR", Decision.QUESTION),
@@ -69,21 +69,21 @@ def _decide(client):
     ("  IGNORAR  ", Decision.IGNORE),
     ("COMPARTILHAR_COM_COMENTARIO", Decision.MUTATE),
 ])
-def test_label_com_ruido_e_recuperado(monkeypatch, digitado, esperado):
-    client, _ = _client(monkeypatch, [_raw(digitado, "texto")])
+def test_noisy_label_is_recovered(monkeypatch, written, expected):
+    client, _ = _client(monkeypatch, [_raw(written, "texto")])
     decision, _, refused = _decide(client)
-    assert decision == esperado
+    assert decision == expected
     assert refused is False
 
 
-def test_label_irrecuperavel_vira_ignorar_e_conta_erro(monkeypatch):
+def test_unrecoverable_label_becomes_ignore_and_counts_an_error(monkeypatch):
     client, _ = _client(monkeypatch, [_raw("BANANA", "texto")])
     decision, _, _ = _decide(client)
     assert decision == Decision.IGNORE
     assert client.stats["parse_errors"] == 1
 
 
-def test_recuperacao_nao_inventa_decisao_distante(monkeypatch):
+def test_recovery_does_not_invent_a_distant_decision(monkeypatch):
     """Tolerância corrige typo, não adivinha intenção."""
     client, _ = _client(monkeypatch, [_raw("REFUTAR_TUDO_SEMPRE", "x")])
     decision, _, _ = _decide(client)
@@ -91,7 +91,7 @@ def test_recuperacao_nao_inventa_decisao_distante(monkeypatch):
     assert client.stats["parse_errors"] == 1
 
 
-def test_json_malformado_continua_sendo_erro_de_parse(monkeypatch):
+def test_malformed_json_is_still_a_parse_error(monkeypatch):
     client, _ = _client(monkeypatch, ["isto nao e json"])
     decision, _, refused = _decide(client)
     assert decision == Decision.IGNORE
@@ -99,7 +99,7 @@ def test_json_malformado_continua_sendo_erro_de_parse(monkeypatch):
     assert client.stats["parse_errors"] == 1
 
 
-def test_recusa_continua_sendo_detectada(monkeypatch):
+def test_refusal_is_still_detected(monkeypatch):
     client, _ = _client(monkeypatch, ["Desculpe, não posso ajudar com isso."])
     decision, _, refused = _decide(client)
     assert decision == Decision.IGNORE
@@ -109,19 +109,19 @@ def test_recusa_continua_sendo_detectada(monkeypatch):
 
 # ── Temperatura ───────────────────────────────────────────────────────────
 
-def test_temperatura_chega_ao_provider(monkeypatch):
+def test_temperature_reaches_the_provider(monkeypatch):
     client, fake = _client(monkeypatch, [_raw(Decision.SHARE.value)],
                            temperature=1.0)
     _decide(client)
-    assert fake.temperaturas == [1.0]
+    assert fake.temperatures == [1.0]
 
 
-def test_temperatura_aparece_nas_stats(monkeypatch):
+def test_temperature_shows_up_in_stats(monkeypatch):
     client, _ = _client(monkeypatch, [], temperature=0.7)
     assert client.stats["temperature"] == 0.7
 
 
-def test_temperatura_default_preserva_o_valor_do_tcc_1(monkeypatch):
+def test_default_temperature_keeps_the_tcc1_value(monkeypatch):
     """0,3 é o valor do TCC I: mudar o default quebra a comparação."""
     monkeypatch.delenv("LLM_TEMPERATURE", raising=False)
     client, _ = _client(monkeypatch, [])
