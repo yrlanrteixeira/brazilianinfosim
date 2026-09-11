@@ -31,6 +31,14 @@ class Message:
     sender_id: Optional[int] = None
     # Versão anterior: o índice de mutação compara versões consecutivas.
     parent_content: Optional[str] = None
+    # Refutação é linhagem à parte: deduplicada junto com o boato que corrige,
+    # ela nunca chegaria a quem já viu o boato.
+    is_refutation: bool = False
+
+    @property
+    def dedup_key(self) -> tuple[str, bool]:
+        """Uma exposição por boato, não por variante do texto."""
+        return (self.original_content, self.is_refutation)
 
     def mutate(self, new_content: str, sender_id: Optional[int] = None) -> "Message":
         return Message(
@@ -41,6 +49,7 @@ class Message:
             # a mutação ao agente errado na cadeia de propagação.
             sender_id=sender_id if sender_id is not None else self.sender_id,
             parent_content=self.content,
+            is_refutation=self.is_refutation,
         )
 
     def forward(self, sender_id: int) -> "Message":
@@ -50,6 +59,7 @@ class Message:
             hops=self.hops + 1,
             sender_id=sender_id,
             parent_content=self.content,
+            is_refutation=self.is_refutation,
         )
 
 
@@ -76,14 +86,17 @@ class InfoAgent(mesa.Agent):
         # Estado dinâmico
         self.inbox: list[Message] = []
         self.sent_messages: list[Message] = []
-        self.received_contents: set[str] = set()
+        self.seen_rumors: set[tuple[str, bool]] = set()
+        # Reexposição é permitida entre ticks, não dentro do mesmo tick.
+        self._tick_seen: set[tuple[str, bool]] = set()
+        self._tick_seen_at: int = -1
         self.belief_level: float = 0.5   # 0=desacredita, 1=acredita totalmente
         self.interaction_history: list[dict] = []
         self.refusal_count: int = 0      # recusas do LLM (guardrail) neste agente
 
     @property
     def has_seen_disinformation(self) -> bool:
-        return len(self.received_contents) > 0
+        return len(self.seen_rumors) > 0
 
     @property
     def mutated_messages(self) -> list[Message]:
@@ -92,9 +105,22 @@ class InfoAgent(mesa.Agent):
                 if m.parent_content is not None and m.content != m.parent_content]
 
     def receive(self, message: Message) -> None:
-        """Chamado pelo motor de simulação para entregar uma mensagem."""
-        if message.content not in self.received_contents:
-            self.inbox.append(message)
+        """
+        Entrega uma mensagem, no máximo uma por boato por tick.
+
+        A dedup é pela linhagem (`dedup_key`), não pelo texto: mutação gera
+        conteúdo novo, e deduplicar por texto fazia cada variante voltar para a
+        fila de quem já tinha visto a anterior, multiplicando as chamadas ao
+        LLM sem alterar o alcance.
+        """
+        key = message.dedup_key
+        if self._tick_seen_at != self.model.tick:
+            self._tick_seen_at = self.model.tick
+            self._tick_seen = set()
+        if key in self._tick_seen:
+            return
+        self._tick_seen.add(key)
+        self.inbox.append(message)
 
     def step(self) -> None:
         """Executado a cada tick pelo Mesa."""
@@ -116,12 +142,12 @@ class InfoAgent(mesa.Agent):
     def _handle_indifferent(self, message: Message) -> None:
         # Usava `random` global (não semeado), tornando a ignição de sementes
         # indiferentes irreprodutível entre execuções. Agora usa o RNG do modelo.
-        self.received_contents.add(message.content)
+        self.seen_rumors.add(message.dedup_key)
         if self.model.rng.random() < 0.10:   # 10% de chance de compartilhar
             self._broadcast(message.forward(self.node_id))
 
     def _process_message(self, message: Message) -> None:
-        self.received_contents.add(message.content)
+        self.seen_rumors.add(message.dedup_key)
 
         decision, new_content, refused = self.llm.decide(
             agent_description=self.profile.to_prompt_description(),
@@ -152,6 +178,7 @@ class InfoAgent(mesa.Agent):
                 hops=message.hops + 1,
                 sender_id=self.node_id,
                 parent_content=message.content,
+                is_refutation=True,
             )
             self._broadcast(refutation)
 
