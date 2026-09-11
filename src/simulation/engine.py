@@ -41,6 +41,9 @@ class SimulationConfig:
     llm_provider: Optional[str] = None   # None | "ollama" | "anthropic"
     llm_model: Optional[str] = None
     enable_cache: bool = True
+    # None nos dois: o LLMClient resolve via env.
+    cache_mode: Optional[str] = None     # None | "exact" | "semantic" | "off"
+    temperature: Optional[float] = None
 
 
 class InfoSimModel(mesa.Model):
@@ -69,6 +72,8 @@ class InfoSimModel(mesa.Model):
             provider=config.llm_provider,
             model=config.llm_model,
             enable_cache=config.enable_cache,
+            cache_mode=config.cache_mode,
+            temperature=config.temperature,
         )
 
         # Cria agentes (Mesa 3.x registra automaticamente em self.agents)
@@ -245,9 +250,8 @@ class SimulationResult:
     final_reach_pct: float
     extinction_tick: int
     llm_stats: dict
-    # Alcance sobre os nós que continuam na rede. Com remove_hubs, o
-    # denominador original (n_agents) faz o alcance máximo cair para 90% por
-    # construção, o que favorece essa intervenção artificialmente.
+    # Alcance sobre os nós que restam: com remove_hubs, n_agents inflaria
+    # artificialmente o efeito da intervenção.
     final_reach_pct_active: float = 0.0
     mutations: list = field(default_factory=list)
     n_removed: int = 0

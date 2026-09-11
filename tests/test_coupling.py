@@ -24,7 +24,7 @@ from agents.profiles import (
 )
 
 
-def _perfil(**kwargs) -> AgentProfile:
+def _profile(**kwargs) -> AgentProfile:
     """Perfil base para os testes, sobrescrevível por kwargs."""
     base = dict(
         agent_type=AgentType.AMPLIFIER,
@@ -43,43 +43,43 @@ def _perfil(**kwargs) -> AgentProfile:
 
 # ── 1. Todo parâmetro comportamental precisa aparecer no prompt ────────────
 
-def test_ceticismo_aparece_no_prompt():
-    assert "muito cético" in _perfil(skepticism=0.95).to_prompt_description()
-    assert "pouco cético" in _perfil(skepticism=0.05).to_prompt_description()
+def test_skepticism_shows_up_in_the_prompt():
+    assert "muito cético" in _profile(skepticism=0.95).to_prompt_description()
+    assert "pouco cético" in _profile(skepticism=0.05).to_prompt_description()
 
 
-def test_propensao_a_compartilhar_aparece_no_prompt():
-    assert "compartilha facilmente" in _perfil(share_propensity=0.95).to_prompt_description()
-    assert "raramente compartilha" in _perfil(share_propensity=0.05).to_prompt_description()
+def test_share_propensity_shows_up_in_the_prompt():
+    assert "compartilha facilmente" in _profile(share_propensity=0.95).to_prompt_description()
+    assert "raramente compartilha" in _profile(share_propensity=0.05).to_prompt_description()
 
 
-def test_vies_de_confirmacao_aparece_no_prompt():
+def test_confirmation_bias_shows_up_in_the_prompt():
     """Este é o parâmetro que era amostrado e NUNCA chegava ao LLM."""
-    alto = _perfil(confirmation_bias=0.90).to_prompt_description()
-    baixo = _perfil(confirmation_bias=0.10).to_prompt_description()
-    assert alto != baixo, (
+    high = _profile(confirmation_bias=0.90).to_prompt_description()
+    low = _profile(confirmation_bias=0.10).to_prompt_description()
+    assert high != low, (
         "confirmation_bias não altera a descrição enviada ao LLM — "
         "o bug de acoplamento voltou."
     )
 
 
-@pytest.mark.parametrize("campo,valores", [
+@pytest.mark.parametrize("field,values", [
     ("skepticism",        (0.05, 0.95)),
     ("share_propensity",  (0.05, 0.95)),
     ("confirmation_bias", (0.05, 0.95)),
 ])
-def test_todo_parametro_comportamental_muda_o_prompt(campo, valores):
+def test_every_behavioral_parameter_changes_the_prompt(field, values):
     """Varredura genérica: nenhum parâmetro pode ser inerte."""
-    lo = _perfil(**{campo: valores[0]}).to_prompt_description()
-    hi = _perfil(**{campo: valores[1]}).to_prompt_description()
-    assert lo != hi, f"'{campo}' não tem efeito no prompt do LLM"
+    lo = _profile(**{field: values[0]}).to_prompt_description()
+    hi = _profile(**{field: values[1]}).to_prompt_description()
+    assert lo != hi, f"'{field}' não tem efeito no prompt do LLM"
 
 
 # ── 2. A intervenção precisa alterar os parâmetros de decisão ─────────────
 
-def test_conversao_altera_parametros_comportamentais():
-    p = _perfil()  # amplificador: pouco cético, compartilha muito
-    antes = (p.skepticism, p.share_propensity, p.confirmation_bias)
+def test_conversion_changes_the_behavioral_parameters():
+    p = _profile()  # amplificador: pouco cético, compartilha muito
+    before = (p.skepticism, p.share_propensity, p.confirmation_bias)
 
     p.apply_factchecker_conversion()
 
@@ -87,49 +87,49 @@ def test_conversao_altera_parametros_comportamentais():
     assert p.skepticism == FACTCHECKER_CONVERSION["skepticism"]
     assert p.share_propensity == FACTCHECKER_CONVERSION["share_propensity"]
     assert p.confirmation_bias == FACTCHECKER_CONVERSION["confirmation_bias"]
-    assert (p.skepticism, p.share_propensity, p.confirmation_bias) != antes
+    assert (p.skepticism, p.share_propensity, p.confirmation_bias) != before
     assert p.converted_by_intervention is True
 
 
-def test_conversao_muda_a_descricao_enviada_ao_llm():
+def test_conversion_changes_the_description_sent_to_the_llm():
     """
     O teste central do bug: antes da correção esta asserção falhava, porque a
     descrição não dependia de nada que a intervenção alterava.
     """
-    p = _perfil()
-    antes = p.to_prompt_description()
+    p = _profile()
+    before = p.to_prompt_description()
     p.apply_factchecker_conversion()
-    depois = p.to_prompt_description()
+    after = p.to_prompt_description()
 
-    assert antes != depois, (
+    assert before != after, (
         "A intervenção não alterou a descrição enviada ao LLM. "
         "A conversão em fact-checker voltou a ser um no-op comportamental."
     )
-    assert "muito cético" in depois
-    assert "raramente compartilha" in depois
-    assert "verificar informações" in depois
+    assert "muito cético" in after
+    assert "raramente compartilha" in after
+    assert "verificar informações" in after
 
 
-def test_factchecker_nativo_tambem_recebe_instrucao_de_verificacao():
+def test_native_factchecker_also_gets_the_verification_instruction():
     """
     Antes da correção, nem os fact-checkers nativos (5% da população) eram
     descritos como verificadores ao LLM — o perfil inteiro era inerte.
     """
-    nativo = _perfil(agent_type=AgentType.FACTCHECKER, skepticism=0.9,
+    native = _profile(agent_type=AgentType.FACTCHECKER, skepticism=0.9,
                      share_propensity=0.6, confirmation_bias=0.1)
-    assert "verificar informações" in nativo.to_prompt_description()
+    assert "verificar informações" in native.to_prompt_description()
 
 
-def test_agentes_nao_factchecker_nao_recebem_instrucao_de_verificacao():
+def test_non_factchecker_agents_do_not_get_the_verification_instruction():
     for t in (AgentType.AMPLIFIER, AgentType.SKEPTIC,
               AgentType.INFLUENCER, AgentType.INDIFFERENT):
-        desc = _perfil(agent_type=t).to_prompt_description()
+        desc = _profile(agent_type=t).to_prompt_description()
         assert "verificar informações" not in desc, f"tipo {t} não deveria verificar"
 
 
 # ── 3. Reprodutibilidade dos perfis ───────────────────────────────────────
 
-def test_geracao_de_perfil_e_deterministica_com_seed():
+def test_profile_generation_is_deterministic_with_a_seed():
     a = generate_profile(seed=42)
     b = generate_profile(seed=42)
     assert a.to_prompt_description() == b.to_prompt_description()
@@ -137,6 +137,6 @@ def test_geracao_de_perfil_e_deterministica_com_seed():
            (b.skepticism, b.share_propensity, b.confirmation_bias)
 
 
-def test_seeds_diferentes_geram_perfis_diferentes():
+def test_different_seeds_generate_different_profiles():
     perfis = {generate_profile(seed=s).to_prompt_description() for s in range(30)}
     assert len(perfis) > 1, "geração de perfis não está variando com a seed"
