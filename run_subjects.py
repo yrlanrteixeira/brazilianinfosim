@@ -16,28 +16,10 @@ import pandas as pd
 from simulation.engine import SimulationConfig, InfoSimModel
 from network.topology import Topology
 from metrics.analysis import summarize_result
+from simulation.messages import SUBJECTS
 
 TOPOS = [Topology.RANDOM, Topology.SCALE_FREE, Topology.SMALL_WORLD]
 
-# Mensagens realistas (estilo WhatsApp), registro comparável entre temas.
-SUBJECTS = {
-    "Saúde/vacinas": (
-        "URGENTE: a vacina da gripe deste ano está causando arritmia em idosos "
-        "e o Ministério da Saúde está escondendo. Repasse para sua família!"
-    ),
-    "Política/eleições": (
-        "ATENÇÃO: documento vazado prova que as urnas eletrônicas foram "
-        "adulteradas na última eleição. Compartilhe antes que apaguem!"
-    ),
-    "Economia/benefícios": (
-        "URGENTE: o governo vai liberar um novo auxílio de R$ 1.200 para quem "
-        "se cadastrar até sexta neste link. Avise todo mundo!"
-    ),
-    "Segurança/crime": (
-        "ALERTA: uma quadrilha está sequestrando crianças na saída das escolas "
-        "usando vans brancas. Já são 5 casos esta semana. Repasse!"
-    ),
-}
 SEEDS = [42, 123, 999, 7, 2024, 55, 2026, 314, 1, 88]
 
 rows = []
