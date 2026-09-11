@@ -1,0 +1,16 @@
+# Dependências da interface visual (app.py). Opcionais: quem só roda campanha
+# não precisa delas.
+#
+#   pip install -r requirements.txt
+#   pip install -r requirements-viz.txt
+#   solara run app.py
+
+mesa[viz]==3.5.1
+solara==1.61.0
+altair==6.2.2
+
+# Linha 2 do Vue, obrigatória. Com ipyvue/ipyvuetify 3.x o solara-ui 1.61 falha
+# ao carregar vue-grid-layout ("GlobalVue.use is not a function") e o painel
+# principal abre vazio, com a barra lateral funcionando normalmente.
+ipyvue==1.12.0
+ipyvuetify==1.11.3

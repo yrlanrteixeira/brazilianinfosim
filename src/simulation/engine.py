@@ -16,6 +16,7 @@ from agents.agent import InfoAgent, Message
 from agents.profiles import AgentType, generate_profile
 from network.topology import Topology, build_network, get_hub_nodes
 from llm.client import LLMClient
+from simulation.recorder import RunRecorder
 
 
 @dataclass
@@ -44,6 +45,9 @@ class SimulationConfig:
     # None nos dois: o LLMClient resolve via env.
     cache_mode: Optional[str] = None     # None | "exact" | "semantic" | "off"
     temperature: Optional[float] = None
+
+    # Caminho do JSON de replay. None não grava.
+    record_path: Optional[str] = None
 
 
 class InfoSimModel(mesa.Model):
@@ -110,11 +114,34 @@ class InfoSimModel(mesa.Model):
         )
 
         # Injeta mensagem inicial
+        self.seed_node: Optional[int] = None
         self._inject_initial_message()
+        self.recorder = self._make_recorder()
         logger.info(
             f"Simulação iniciada: {config.n_agents} agentes, "
             f"topologia={config.topology.value}, seed={config.seed}"
         )
+
+    def _make_recorder(self) -> Optional[RunRecorder]:
+        if not self.config.record_path:
+            return None
+        c = self.config
+        recorder = RunRecorder(meta={
+            "n_agents": c.n_agents,
+            "topology": c.topology.value,
+            "seed": c.seed,
+            "inject_at": c.inject_at,
+            "intervention": c.intervention,
+            "intervention_tick": c.intervention_tick,
+            "seed_node": self.seed_node,
+            "initial_message": c.initial_message,
+            "temperature": self.llm.temperature,
+            "cache_mode": self.llm.cache_mode,
+            "provider": self.llm.provider.name,
+            "model": self.llm.provider.model,
+        })
+        recorder.snapshot(self)
+        return recorder
 
     def _inject_initial_message(self) -> None:
         """Injeta a fake news no nó inicial conforme configuração."""
@@ -136,6 +163,7 @@ class InfoSimModel(mesa.Model):
             hops=0,
             sender_id=None,
         )
+        self.seed_node = start_node
         seed_agent = self.agents_by_id[start_node]
         seed_agent.receive(msg)
         logger.info(f"Fake news injetada no nó {start_node} (grau={self.G.degree(start_node)})")
@@ -200,6 +228,8 @@ class InfoSimModel(mesa.Model):
         # Mesa 3.x: ativação aleatória dos agentes via AgentSet
         self.agents.shuffle_do("step")
         self.tick += 1
+        if self.recorder:
+            self.recorder.snapshot(self)
 
     def run(self) -> "SimulationResult":
         """Executa a simulação completa até max_ticks ou extinção."""
@@ -227,6 +257,10 @@ class InfoSimModel(mesa.Model):
             f"({reached/self.config.n_agents*100:.1f}%) | "
             f"LLM: {self.llm.stats}"
         )
+
+        if self.recorder:
+            destino = self.recorder.save(self.config.record_path)
+            logger.info(f"Gravação de replay salva em {destino}")
 
         return SimulationResult(
             config=self.config,
