@@ -58,6 +58,8 @@ data/outputs/*.db
 data/outputs/*.sqlite
 data/outputs/*.png
 data/outputs/*.pdf
+# Gravações de replay. Para versionar uma escolhida: git add -f <arquivo>
+data/outputs/recordings/
 !data/outputs/.gitkeep
 
 # Logs
