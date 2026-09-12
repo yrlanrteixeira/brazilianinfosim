@@ -65,6 +65,8 @@ def parse_args():
                    help="temperatura do modelo (a 0.3 a mutação não ocorre)")
     p.add_argument("--from-raw", type=str, default=None,
                    help="agrega CSVs crus já existentes (glob) sem rodar o LLM")
+    p.add_argument("--resume", action="store_true",
+                   help="pula os pares (assunto, semente) já gravados")
     return p.parse_args()
 
 
@@ -79,15 +81,42 @@ def load_raw(pattern: str) -> list[dict]:
     return pd.concat(dfs, ignore_index=True).to_dict("records")
 
 
+def done_pairs(prefix: str) -> set[tuple[str, int]]:
+    """Pares (assunto, semente) já gravados, para retomar de onde parou."""
+    runs_csv = OUT_DIR / f"{prefix}_runs.csv"
+    if not runs_csv.exists():
+        return set()
+    df = pd.read_csv(runs_csv)
+    return set(zip(df["subject"], df["seed"]))
+
+
 def run_campaign(subjects: dict, seeds: list[int], n_agents: int,
-                 temperature: float) -> tuple[list, list]:
-    """Executa a campanha e devolve (resumos por run, mutações cruas)."""
-    raw, rows = [], []
+                 temperature: float, prefix: str,
+                 resume: bool = False) -> tuple[list, list]:
+    """
+    Executa a campanha, gravando a cada run concluído.
+
+    Campanha longa cai: gravar só no fim perde tudo o que já rodou.
+    """
+    rows, raw = [], []
+    done = done_pairs(prefix) if resume else set()
+    if done:
+        print(f"Retomando: {len(done)} run(s) já concluído(s)", flush=True)
+        rows = pd.read_csv(OUT_DIR / f"{prefix}_runs.csv").to_dict("records")
+        raw_csv = OUT_DIR / f"{prefix}_raw.csv"
+        if raw_csv.exists():
+            raw = pd.read_csv(raw_csv).to_dict("records")
+
     total = len(subjects) * len(seeds)
     i = 0
     for subject, msg in subjects.items():
         for seed in seeds:
             i += 1
+            if (subject, seed) in done:
+                print(f"[{i}/{total}] {subject:20s} seed={seed} -> já feito",
+                      flush=True)
+                continue
+
             cfg = SimulationConfig(
                 n_agents=n_agents, topology=Topology.SCALE_FREE, max_ticks=100,
                 seed=seed, initial_message=msg, intervention=None,
@@ -100,15 +129,23 @@ def run_campaign(subjects: dict, seeds: list[int], n_agents: int,
             s = summarize_result(result, with_mutation=False)
             s.update(subject=subject, seed=seed, cache_enabled=False)
             rows.append(s)
+            raw.extend(dict(m, subject=subject, seed=seed)
+                       for m in result.mutations)
 
-            for m in result.mutations:
-                raw.append(dict(m, subject=subject, seed=seed))
+            _persist(rows, raw, prefix)
 
             print(f"[{i}/{total}] {subject:20s} seed={seed} -> "
                   f"alcance {s['final_reach_pct']:.0f}%, "
                   f"{len(result.mutations)} mutações, "
                   f"{s['refusals_agents']} recusas", flush=True)
     return rows, raw
+
+
+def _persist(rows: list[dict], raw: list[dict], prefix: str) -> None:
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(rows).to_csv(OUT_DIR / f"{prefix}_runs.csv", index=False)
+    if raw:
+        pd.DataFrame(raw).to_csv(OUT_DIR / f"{prefix}_raw.csv", index=False)
 
 
 def main():
@@ -127,19 +164,16 @@ def main():
             sys.exit(f"Nenhum assunto casou com {args.subjects!r}")
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    rows, raw = run_campaign(subjects, seeds, args.n_agents, args.temperature)
+    rows, raw = run_campaign(subjects, seeds, args.n_agents, args.temperature,
+                             args.prefix, resume=args.resume)
 
-    runs_csv = OUT_DIR / f"{args.prefix}_runs.csv"
-    pd.DataFrame(rows).to_csv(runs_csv, index=False)
-    print(f"\n{runs_csv} salvo ({len(rows)} runs)", flush=True)
-
+    print(f"\n{OUT_DIR / f'{args.prefix}_runs.csv'} ({len(rows)} runs)",
+          flush=True)
     if not raw:
         print("Nenhuma mutação coletada: nada a agregar.", flush=True)
         return
-
-    raw_csv = OUT_DIR / f"{args.prefix}_raw.csv"
-    pd.DataFrame(raw).to_csv(raw_csv, index=False)
-    print(f"{raw_csv} salvo ({len(raw)} mutações)", flush=True)
+    print(f"{OUT_DIR / f'{args.prefix}_raw.csv'} ({len(raw)} mutações)",
+          flush=True)
 
     aggregate(raw, args.prefix)
 
