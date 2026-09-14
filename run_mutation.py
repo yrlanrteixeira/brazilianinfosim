@@ -30,6 +30,7 @@ import pandas as pd
 from simulation.engine import SimulationConfig, InfoSimModel
 from simulation.messages import SUBJECTS
 from network.topology import Topology
+from llm.client import BackendUnavailable
 from metrics.analysis import (
     summarize_result, mutation_index, mutation_by_hop, plot_mutation_by_hop,
 )
@@ -128,6 +129,18 @@ def run_campaign(subjects: dict, seeds: list[int], n_agents: int,
             # O embedder roda depois, em lote.
             s = summarize_result(result, with_mutation=False)
             s.update(subject=subject, seed=seed, cache_enabled=False)
+
+            # Run curto faz uma ou duas chamadas, então a sequência dentro do
+            # cliente nunca dispara: a checagem tem que ser por run.
+            chamadas = s.get("api_calls", 0)
+            falhas = s.get("backend_errors", 0)
+            if falhas and falhas == chamadas:
+                raise BackendUnavailable(
+                    f"{subject} seed={seed}: todas as {falhas} chamada(s) ao "
+                    f"provider falharam. Sem isto o run entraria no CSV como "
+                    f"concluído."
+                )
+
             rows.append(s)
             raw.extend(dict(m, subject=subject, seed=seed)
                        for m in result.mutations)
@@ -164,8 +177,16 @@ def main():
             sys.exit(f"Nenhum assunto casou com {args.subjects!r}")
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    rows, raw = run_campaign(subjects, seeds, args.n_agents, args.temperature,
-                             args.prefix, resume=args.resume)
+    try:
+        rows, raw = run_campaign(subjects, seeds, args.n_agents,
+                                 args.temperature, args.prefix,
+                                 resume=args.resume)
+    except BackendUnavailable as e:
+        runs_csv = OUT_DIR / f"{args.prefix}_runs.csv"
+        onde = (f"Os runs concluídos antes da falha estão em {runs_csv}."
+                if runs_csv.exists() else "Nenhum run foi gravado.")
+        sys.exit(f"\nCampanha abortada: {e}\n{onde}\n"
+                 f"Religue o provider e retome com --resume.")
 
     print(f"\n{OUT_DIR / f'{args.prefix}_runs.csv'} ({len(rows)} runs)",
           flush=True)

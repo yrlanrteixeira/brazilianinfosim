@@ -98,6 +98,64 @@ def test_resume_without_previous_file_runs_everything(fake_engine):
     assert FakeModel.built == 2
 
 
+def test_a_run_with_every_call_failing_aborts_the_campaign(monkeypatch, fake_engine):
+    """
+    O contador dentro do cliente não protege: cada run cria um cliente novo, e
+    um run que morre cedo faz uma ou duas chamadas só.
+    """
+    monkeypatch.setattr(
+        run_mutation, "summarize_result",
+        lambda result, with_mutation=True: {
+            "final_reach_pct": 2.0, "refusals_agents": 0,
+            "api_calls": 2, "backend_errors": 2,
+        },
+    )
+    with pytest.raises(run_mutation.BackendUnavailable):
+        run_mutation.run_campaign(SUBJECTS, [42, 123], 50, 1.0, prefix="camp")
+
+
+def test_the_poisoned_run_is_not_persisted(monkeypatch, fake_engine):
+    monkeypatch.setattr(
+        run_mutation, "summarize_result",
+        lambda result, with_mutation=True: {
+            "final_reach_pct": 2.0, "refusals_agents": 0,
+            "api_calls": 1, "backend_errors": 1,
+        },
+    )
+    with pytest.raises(run_mutation.BackendUnavailable):
+        run_mutation.run_campaign(SUBJECTS, [42], 50, 1.0, prefix="camp")
+
+    assert not (fake_engine / "camp_runs.csv").exists(), (
+        "run envenenado não pode entrar no CSV: o --resume o trataria como feito"
+    )
+
+
+def test_a_run_without_llm_calls_is_not_mistaken_for_failure(monkeypatch, fake_engine):
+    """Run que morre sem chamar o LLM é desfecho legítimo, não backend caído."""
+    monkeypatch.setattr(
+        run_mutation, "summarize_result",
+        lambda result, with_mutation=True: {
+            "final_reach_pct": 2.0, "refusals_agents": 0,
+            "api_calls": 0, "backend_errors": 0,
+        },
+    )
+    run_mutation.run_campaign(SUBJECTS, [42], 50, 1.0, prefix="camp")
+    assert len(pd.read_csv(fake_engine / "camp_runs.csv")) == 1
+
+
+def test_partial_backend_failure_does_not_abort(monkeypatch, fake_engine):
+    """Blip isolado no meio de um run bom não pode derrubar a campanha."""
+    monkeypatch.setattr(
+        run_mutation, "summarize_result",
+        lambda result, with_mutation=True: {
+            "final_reach_pct": 90.0, "refusals_agents": 0,
+            "api_calls": 200, "backend_errors": 1,
+        },
+    )
+    run_mutation.run_campaign(SUBJECTS, [42], 50, 1.0, prefix="camp")
+    assert len(pd.read_csv(fake_engine / "camp_runs.csv")) == 1
+
+
 def test_without_resume_the_previous_file_is_replaced(fake_engine):
     run_mutation.run_campaign(SUBJECTS, [42], 50, 1.0, prefix="camp")
     run_mutation.run_campaign(SUBJECTS, [123], 50, 1.0, prefix="camp")

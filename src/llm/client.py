@@ -84,6 +84,14 @@ REFUSAL_MARKERS = (
 
 CACHE_MODES = ("exact", "semantic", "off")
 
+# Falha isolada não pode derrubar uma campanha de horas, e backend fora do ar
+# não pode virar decisão de agente.
+MAX_CONSECUTIVE_BACKEND_ERRORS = 3
+
+
+class BackendUnavailable(RuntimeError):
+    """O provider parou de responder: abortar em vez de fabricar IGNORAR."""
+
 # Valor usado no TCC I: alterar quebra a comparação com os resultados já publicados.
 DEFAULT_TEMPERATURE = 0.3
 
@@ -315,6 +323,8 @@ class LLMClient:
         self._cache_hits = 0
         self._parse_errors = 0
         self._refusals = 0
+        self._backend_errors = 0
+        self._backend_streak = 0
         # Matriz de embeddings mantida para busca vetorizada
         self._emb_matrix = None
         self._emb_norms = None
@@ -433,9 +443,13 @@ class LLMClient:
         self._call_count += 1
         raw = ""
         try:
-            raw = self.provider.complete(
-                prompt=prompt, max_tokens=300, temperature=self.temperature
-            )
+            raw = self._call_provider(prompt)
+        except BackendUnavailable:
+            raise
+        except Exception:
+            return Decision.IGNORE, "", False
+
+        try:
             parsed = self._extract_json(raw)
             decision = parse_decision(str(parsed.get("decision", "")))
             if decision is None:
@@ -468,10 +482,32 @@ class LLMClient:
             )
             return Decision.IGNORE, "", False
 
+    def _call_provider(self, prompt: str) -> str:
+        """
+        Chamada ao provider, isolada de propósito: o que falha aqui é
+        infraestrutura, o que falha depois é conteúdo. Misturar os dois faz
+        um backend fora do ar virar uma campanha inteira de IGNORAR.
+        """
+        try:
+            raw = self.provider.complete(
+                prompt=prompt, max_tokens=300, temperature=self.temperature
+            )
         except Exception as e:
-            self._parse_errors += 1
-            logger.error(f"Erro inesperado na chamada LLM: {type(e).__name__}: {e}")
-            return Decision.IGNORE, "", False
+            self._backend_errors += 1
+            self._backend_streak += 1
+            if self._backend_streak >= MAX_CONSECUTIVE_BACKEND_ERRORS:
+                raise BackendUnavailable(
+                    f"{self._backend_streak} falhas seguidas ao chamar "
+                    f"{self.provider.name}: {type(e).__name__}: {e}"
+                ) from e
+            logger.error(
+                f"Falha ao chamar o provider ({self._backend_errors} total): "
+                f"{type(e).__name__}: {e}"
+            )
+            raise
+
+        self._backend_streak = 0
+        return raw
 
     @property
     def stats(self) -> dict:
@@ -487,6 +523,7 @@ class LLMClient:
             "cache_hits": self._cache_hits,
             "cache_hit_rate": f"{hit_rate:.1%}",
             "parse_errors": self._parse_errors,
+            "backend_errors": self._backend_errors,
             "refusals": self._refusals,
             "refusal_rate": f"{refusal_rate:.1%}",
         }
