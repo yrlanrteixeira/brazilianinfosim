@@ -40,6 +40,9 @@ class FakeModel:
         self.llm = type("L", (), {"stats": {"api_calls": 7, "cache_hits": 0}})()
         self.config = type("C", (), {"n_agents": 2})()
 
+    def _count_reached(self):
+        return sum(agent.has_seen_disinformation for agent in self.agents_by_id.values())
+
 
 def _recorder():
     return RunRecorder(

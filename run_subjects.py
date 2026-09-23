@@ -17,6 +17,9 @@ from simulation.engine import SimulationConfig, InfoSimModel
 from network.topology import Topology
 from metrics.analysis import summarize_result
 from simulation.messages import SUBJECTS
+from simulation.persistence import campaign_directory, save_result
+
+OUT_DIR = campaign_directory("subjects")
 
 TOPOS = [Topology.RANDOM, Topology.SCALE_FREE, Topology.SMALL_WORLD]
 
@@ -32,15 +35,19 @@ for subject, msg in SUBJECTS.items():
             cfg = SimulationConfig(
                 n_agents=50, topology=topo, max_ticks=100, seed=seed,
                 initial_message=msg, intervention=None, inject_at="hub",
+                cache_mode="off",
             )
-            s = summarize_result(InfoSimModel(cfg).run())
+            result = InfoSimModel(cfg).run()
+            save_result(result, OUT_DIR / "subject_runs", f"{list(SUBJECTS).index(subject)}_{topo.value}_{seed}")
+            s = summarize_result(result, with_mutation=False)
             s.update(subject=subject, seed=seed)
             rows.append(s)
+            pd.DataFrame(rows).to_csv(OUT_DIR / "subjects_experiment.csv", index=False)
             print(f"[{i}/{total}] {subject:20s} {topo.value:16s} seed={seed} "
                   f"-> {s['final_reach_pct']:.0f}%", flush=True)
 
 df = pd.DataFrame(rows)
-df.to_csv("data/outputs/subjects_experiment.csv", index=False)
+df.to_csv(OUT_DIR / "subjects_experiment.csv", index=False)
 print(f"\nsubjects_experiment.csv salvo ({len(df)} runs)", flush=True)
 
 df["ign"] = df["final_reach_pct"] > 10

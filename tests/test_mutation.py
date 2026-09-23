@@ -21,19 +21,23 @@ from simulation.messages import SUBJECTS
 
 class FakeEmbedder:
     """
-    Encoder determinístico por texto. Textos iguais geram vetores iguais,
-    textos diferentes geram vetores quase ortogonais.
+    Vetores ortogonais por texto, sem depender de hash aleatório ou modelo.
     """
 
+    def __init__(self):
+        self.vocabulary = {}
+
     def encode(self, text: str):
-        rng = np.random.default_rng(abs(hash(text)) % (2**32))
-        vector = rng.normal(size=16)
-        return vector / np.linalg.norm(vector)
+        index = self.vocabulary.setdefault(text, len(self.vocabulary))
+        vector = np.zeros(64)
+        vector[index] = 1.0
+        return vector
 
 
 @pytest.fixture(autouse=True)
 def fake_embedder(monkeypatch):
-    monkeypatch.setattr(analysis, "_get_embedder", lambda: FakeEmbedder())
+    embedder = FakeEmbedder()
+    monkeypatch.setattr(analysis, "_get_embedder", lambda: embedder)
     analysis.reset_encode_memo()
     yield
     analysis.reset_encode_memo()
@@ -71,6 +75,12 @@ def test_mutation_index_of_empty_input_is_zero():
     assert analysis.mutation_index([]) == 0.0
 
 
+def test_cosine_distance_accepts_values_above_one(monkeypatch):
+    vectors = {"a": np.array([1.0, 0.0]), "b": np.array([-1.0, 0.0])}
+    monkeypatch.setattr(analysis, "_encode", vectors.__getitem__)
+    assert analysis.mutation_index([_mut(1, "b", "a")]) == pytest.approx(2.0)
+
+
 # ── mutation_by_hop ───────────────────────────────────────────────────────
 
 def test_mutation_by_hop_groups_and_sorts():
@@ -100,7 +110,8 @@ def test_mutation_by_hop_does_not_reencode_the_same_text(monkeypatch):
             calls.append(text)
             return super().encode(text)
 
-    monkeypatch.setattr(analysis, "_get_embedder", lambda: CountingEmbedder())
+    embedder = CountingEmbedder()
+    monkeypatch.setattr(analysis, "_get_embedder", lambda: embedder)
     analysis.reset_encode_memo()
 
     mutations = [_mut(1, "b", "a"), _mut(1, "b", "a"), _mut(2, "c", "b")]
