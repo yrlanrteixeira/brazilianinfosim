@@ -14,6 +14,9 @@ from simulation.engine import SimulationConfig, InfoSimModel
 from network.topology import Topology
 from metrics.analysis import summarize_result
 import pandas as pd
+from simulation.persistence import campaign_directory, save_result
+
+OUT_DIR = campaign_directory("timing")
 
 MSG = {
     "saude": ("URGENTE: Médicos escondem que vitamina C em altas doses cura "
@@ -37,18 +40,21 @@ for topo, msg_name, seed in CASES:
             n_agents=50, topology=topo, max_ticks=100, seed=seed,
             initial_message=MSG[msg_name], intervention=interv,
             intervention_tick=tick,
+            cache_mode="off",
         )
         result = InfoSimModel(cfg).run()
-        s = summarize_result(result)
+        save_result(result, OUT_DIR / "timing_runs", f"{topo.value}_{msg_name}_{seed}_{interv or 'none'}_t{tick}")
+        s = summarize_result(result, with_mutation=False)
         s["msg"] = msg_name
         s["seed"] = seed
         s["interv_tick"] = tick if interv else "-"
         rows.append(s)
+        pd.DataFrame(rows).to_csv(OUT_DIR / "supplementary_timing.csv", index=False)
         print(f"{topo.value:16s} {msg_name:9s} seed={seed} "
               f"interv={interv or 'none':16s}(tick={tick}) -> reach={s['final_reach_pct']:.0f}% "
               f"crentes={s['final_believers']}")
 
 df = pd.DataFrame(rows)
-out = Path("data/outputs/supplementary_timing.csv")
+out = OUT_DIR / "supplementary_timing.csv"
 df.to_csv(out, index=False)
 print(f"\nSalvo em {out}")

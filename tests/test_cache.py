@@ -151,14 +151,20 @@ def test_enable_cache_false_still_disables(monkeypatch):
 
 # ── O artefato, preservado para poder ser medido ──────────────────────────
 
-def test_semantic_mode_still_collapses_opposite_profiles(monkeypatch):
-    """O modo é mantido para medir o artefato: trava o comportamento dele."""
-    pytest.importorskip("sentence_transformers")
+def test_semantic_mode_reuses_response_when_embeddings_collide(monkeypatch):
+    """Teste do algoritmo com colisão controlada, sem download de modelo."""
+    import numpy as np
+
+    class CollidingEmbedder:
+        def encode(self, text):
+            return np.array([1.0, 0.0])
+
     client, fake = _client(monkeypatch, cache_mode="semantic",
                            similarity_threshold=0.92)
+    monkeypatch.setattr(client, "_get_embedder", lambda: CollidingEmbedder())
     _decide(client, AMPLIFIER, MSG_A)
     _decide(client, SKEPTIC, MSG_A)
-    assert len(fake.calls) == 1, "o colapso do cache semântico deixou de ocorrer"
+    assert len(fake.calls) == 1
 
 
 def test_prompt_is_dominated_by_the_template():
