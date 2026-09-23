@@ -39,7 +39,7 @@ class ReplayModel(mesa.Model):
         self.G: nx.Graph = build_network(
             topology=Topology(self.meta["topology"]),
             n_agents=self.meta["n_agents"],
-            seed=self.meta["seed"],
+            seed=self.meta.get("network_seed", self.meta["seed"]),
         )
         # Layout fixo: recalcular a cada tick faz o grafo pular na tela.
         self.pos = nx.spring_layout(self.G, seed=self.meta["seed"])

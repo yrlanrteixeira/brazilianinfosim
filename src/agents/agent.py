@@ -4,7 +4,7 @@ Agente de simulação baseado em Mesa, integrado com LLM.
 """
 
 from __future__ import annotations
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING, Optional
 import mesa
@@ -34,6 +34,7 @@ class Message:
     # Refutação é linhagem à parte: deduplicada junto com o boato que corrige,
     # ela nunca chegaria a quem já viu o boato.
     is_refutation: bool = False
+    parent_is_refutation: bool = False
 
     @property
     def dedup_key(self) -> tuple[str, bool]:
@@ -50,6 +51,7 @@ class Message:
             sender_id=sender_id if sender_id is not None else self.sender_id,
             parent_content=self.content,
             is_refutation=self.is_refutation,
+            parent_is_refutation=self.is_refutation,
         )
 
     def forward(self, sender_id: int) -> "Message":
@@ -60,6 +62,7 @@ class Message:
             sender_id=sender_id,
             parent_content=self.content,
             is_refutation=self.is_refutation,
+            parent_is_refutation=self.is_refutation,
         )
 
 
@@ -96,13 +99,18 @@ class InfoAgent(mesa.Agent):
 
     @property
     def has_seen_disinformation(self) -> bool:
-        return len(self.seen_rumors) > 0
+        return any(not correction for _, correction in self.seen_rumors)
+
+    @property
+    def has_seen_correction(self) -> bool:
+        return any(correction for _, correction in self.seen_rumors)
 
     @property
     def mutated_messages(self) -> list[Message]:
         """Mensagens que este agente enviou com conteúdo alterado."""
         return [m for m in self.sent_messages
-                if m.parent_content is not None and m.content != m.parent_content]
+                if not m.is_refutation and not m.parent_is_refutation
+                and m.parent_content is not None and m.content != m.parent_content]
 
     def receive(self, message: Message) -> None:
         """
@@ -117,9 +125,10 @@ class InfoAgent(mesa.Agent):
         if self._tick_seen_at != self.model.tick:
             self._tick_seen_at = self.model.tick
             self._tick_seen = set()
-        if key in self._tick_seen:
+        if key in self._tick_seen or any(m.dedup_key == key for m in self.inbox):
             return
         self._tick_seen.add(key)
+        self.seen_rumors.add(key)
         self.inbox.append(message)
 
     def step(self) -> None:
@@ -127,17 +136,16 @@ class InfoAgent(mesa.Agent):
         if not self.inbox:
             return
 
-        # Agentes indiferentes: decisão determinística sem chamar LLM
-        if self.profile.agent_type.value == "indiferente":
-            for msg in self.inbox:
-                self._handle_indifferent(msg)
-            self.inbox.clear()
-            return
-
-        for message in self.inbox:
-            self._process_message(message)
-
-        self.inbox.clear()
+        messages, self.inbox = self.inbox, []
+        if self._tick_seen_at != self.model.tick:
+            self._tick_seen_at = self.model.tick
+            self._tick_seen = set()
+        self._tick_seen.update(m.dedup_key for m in messages)
+        for message in messages:
+            if self.profile.agent_type.value == "indiferente":
+                self._handle_indifferent(message)
+            else:
+                self._process_message(message)
 
     def _handle_indifferent(self, message: Message) -> None:
         # Usava `random` global (não semeado), tornando a ignição de sementes
@@ -149,9 +157,14 @@ class InfoAgent(mesa.Agent):
     def _process_message(self, message: Message) -> None:
         self.seen_rumors.add(message.dedup_key)
 
+        content = message.content
+        if message.is_refutation and not content.startswith("[REFUTAÇÃO]"):
+            content = f"[REFUTAÇÃO] {content}"
+        self.llm.audit_context = {"node_id": self.node_id, "tick": self.model.tick,
+                                  "is_refutation": message.is_refutation}
         decision, new_content, refused = self.llm.decide(
             agent_description=self.profile.to_prompt_description(),
-            message_content=message.content,
+            message_content=content,
             history=self.interaction_history[-5:],  # últimas 5 interações
         )
 
@@ -164,30 +177,34 @@ class InfoAgent(mesa.Agent):
             "decision": decision.value,
             "sent": new_content,
             "refused": refused,   # distingue recusa do LLM de decisão do perfil
+            "is_refutation": message.is_refutation,
         })
 
-        if decision == Decision.IGNORE or decision == Decision.QUESTION:
-            self.belief_level = max(0.0, self.belief_level - 0.1)
+        if refused or decision == Decision.IGNORE:
+            return
 
-        elif decision == Decision.REFUTE:
-            self.belief_level = max(0.0, self.belief_level - 0.2)
-            # Fact-checkers notificam vizinhos com refutação
+        direction = -1 if message.is_refutation else 1
+        changes = {Decision.QUESTION: -0.1, Decision.REFUTE: -0.2,
+                   Decision.SHARE: 0.15, Decision.MUTATE: 0.10}
+        self.belief_level = min(1.0, max(0.0, self.belief_level + direction * changes[decision]))
+
+        if decision == Decision.REFUTE:
+            # Contestar uma correção volta a apoiar a linhagem do boato.
             refutation = Message(
-                content=f"[REFUTAÇÃO] {new_content}",
+                content=new_content if message.is_refutation else f"[REFUTAÇÃO] {new_content}",
                 original_content=message.original_content,
                 hops=message.hops + 1,
                 sender_id=self.node_id,
                 parent_content=message.content,
-                is_refutation=True,
+                is_refutation=not message.is_refutation,
+                parent_is_refutation=message.is_refutation,
             )
             self._broadcast(refutation)
 
         elif decision == Decision.SHARE:
-            self.belief_level = min(1.0, self.belief_level + 0.15)
             self._broadcast(message.forward(self.node_id))
 
         elif decision == Decision.MUTATE:
-            self.belief_level = min(1.0, self.belief_level + 0.10)
             # O modelo às vezes muta com `content` vazio: repassa sem alterar.
             if new_content.strip():
                 self._broadcast(message.mutate(new_content, sender_id=self.node_id))

@@ -48,11 +48,11 @@ def _encode(text: str):
 def semantic_mutation_rate(messages: list[str], original: str) -> float:
     """
     Similaridade média de cosseno entre as mensagens mutadas e a original.
-    Retorna valor entre 0 (muito mutado) e 1 (idêntico).
+    Retorna similaridade no intervalo [-1, 1]. Não mede veracidade.
 
     ATENÇÃO: esta função retorna SIMILARIDADE, não o índice M do artigo.
     O artigo define M = média de (1 - cossim entre versões CONSECUTIVAS),
-    com 0 = fidelidade e 1 = distorção. Use `mutation_index()` para isso.
+    com distância no intervalo [0, 2]. Use `mutation_index()` para isso.
     """
     if not messages:
         return 1.0
@@ -72,7 +72,7 @@ def mutation_index(mutations: list[dict]) -> float:
         M = (1/N) * sum_t [ 1 - cossim(e_t, e_{t-1}) ]
 
     Cada item de `mutations` traz `content` (versão t) e `parent_content`
-    (versão t-1). Retorna 0 para fidelidade total e 1 para distorção total.
+    (versão t-1). A distância está em [0, 2] e não mede veracidade.
     """
     # Vindo de CSV, um parent ausente volta como NaN, que é truthy.
     pares = [(m["content"], m["parent_content"]) for m in mutations
@@ -89,8 +89,8 @@ def mutation_index(mutations: list[dict]) -> float:
 
 def mutation_by_hop(mutations: list[dict]) -> pd.DataFrame:
     """
-    Índice de mutação agregado por hop, para ver a distorção acumulando ao
-    longo da cascata. Colunas: hop, n, M, M_vs_original.
+    Distância agregada por hop, sem pressupor crescimento monotônico.
+    Colunas: hop, n, M, M_vs_original.
     """
     cols = ["hop", "n", "M", "M_vs_original"]
     if not mutations:
@@ -140,10 +140,18 @@ def summarize_result(result: "SimulationResult", with_mutation: bool = True) -> 
         "topology":          result.config.topology.value,
         "n_agents":          result.config.n_agents,
         "intervention":      result.config.intervention or "none",
+        "intervention_tick": result.config.intervention_tick if result.config.intervention else None,
+        "seed":              result.config.seed,
         "inject_at":         result.config.inject_at,
         "final_reach_pct":   round(result.final_reach_pct, 2),
         "final_reach_pct_active": round(result.final_reach_pct_active, 2),
         "extinction_tick":   result.extinction_tick,
+        "ticks_run":         result.ticks_run,
+        "stop_reason":       result.stop_reason,
+        "final_correction_reach_pct": round(result.final_correction_reach_pct, 2),
+        "intervention_applied": result.intervention_applied,
+        "intervention_applied_tick": result.intervention_applied_tick,
+        "intervention_nodes": ",".join(map(str, result.intervention_nodes)),
         "final_believers":   int(df["believers"].iloc[-1]),
         "n_removed":         result.n_removed,
         "refusals_agents":   result.refusals_total,
@@ -172,9 +180,9 @@ def plot_simulation(result: "SimulationResult", save_path: str = None) -> None:
     ax1 = fig.add_subplot(gs[0])
     ax1.plot(df.index, df["reach_pct"], color="#E63946", linewidth=2)
     ax1.axhline(y=result.final_reach_pct, color="gray", linestyle="--", alpha=0.5)
-    if cfg.intervention:
-        ax1.axvline(x=cfg.intervention_tick, color="#457B9D", linestyle=":", linewidth=1.5,
-                    label=f"Intervenção (tick {cfg.intervention_tick})")
+    if result.intervention_applied:
+        ax1.axvline(x=result.intervention_applied_tick, color="#457B9D", linestyle=":", linewidth=1.5,
+                    label=f"Intervenção aplicada (tick {result.intervention_applied_tick})")
         ax1.legend(fontsize=8)
     ax1.set_xlabel("Tick")
     ax1.set_ylabel("Alcance (%)")
@@ -193,8 +201,8 @@ def plot_simulation(result: "SimulationResult", save_path: str = None) -> None:
 
     # 3. Alcance final por tipo de agente (última coleta)
     ax3 = fig.add_subplot(gs[2])
-    agent_df = result.agent_data.xs(result.extinction_tick - 1, level="Step") \
-        if result.extinction_tick > 1 else result.agent_data.xs(0, level="Step")
+    last_step = result.agent_data.index.get_level_values("Step").max()
+    agent_df = result.agent_data.xs(last_step, level="Step")
     if "agent_type" in agent_df.columns:
         reach_by_type = agent_df.groupby("agent_type")["has_seen"].mean() * 100
         colors = {
@@ -210,7 +218,7 @@ def plot_simulation(result: "SimulationResult", save_path: str = None) -> None:
             color=[colors.get(t, "#888") for t in reach_by_type.index]
         )
         ax3.set_ylabel("% que recebeu a mensagem")
-        ax3.set_title("Alcance por Tipo de Agente")
+        ax3.set_title("Alcance entre Agentes Ativos por Tipo Final")
         ax3.set_ylim(0, 110)
         ax3.tick_params(axis="x", rotation=30)
         ax3.grid(axis="y", alpha=0.3)
@@ -244,8 +252,8 @@ def plot_mutation_by_hop(df: pd.DataFrame, save_path: str = None) -> None:
         ax2.plot(g["hop"], g["M_vs_original"], marker="o", linewidth=1.8, label=nome)
 
     ax1.set_title("M entre versões consecutivas")
-    ax1.set_ylabel("M (0 = fidelidade, 1 = distorção)")
-    ax2.set_title("Distorção acumulada vs. mensagem original")
+    ax1.set_ylabel("Distância semântica (1 - cosseno)")
+    ax2.set_title("Distância em relação à mensagem original")
     ax2.set_ylabel("1 - cossim(versão, original)")
     for ax in (ax1, ax2):
         ax.set_xlabel("Hop")

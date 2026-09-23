@@ -32,7 +32,7 @@ class RunRecorder:
         self.ticks.append({
             "tick": model.tick,
             "agents": agents,
-            "reached": sum(1 for v in agents.values() if v["has_seen"]),
+            "reached": model._count_reached(),
             "believers": believers,
             "api_calls": model.llm.stats.get("api_calls", 0),
             "refusals": sum(a.refusal_count for a in model.agents_by_id.values()),

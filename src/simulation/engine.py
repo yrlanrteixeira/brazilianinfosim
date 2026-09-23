@@ -4,7 +4,7 @@ Motor de simulação principal — orquestra agentes, rede e coleta de dados.
 """
 
 from __future__ import annotations
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from typing import Optional
 import random
 
@@ -26,6 +26,10 @@ class SimulationConfig:
     topology: Topology = Topology.SCALE_FREE
     max_ticks: int = 100
     seed: int = 42
+    network_seed: Optional[int] = None
+    profile_seed: Optional[int] = None
+    activation_seed: Optional[int] = None
+    llm_seed: Optional[int] = None
 
     # Mensagem inicial
     initial_message: str = (
@@ -49,6 +53,16 @@ class SimulationConfig:
     # Caminho do JSON de replay. None não grava.
     record_path: Optional[str] = None
 
+    def __post_init__(self):
+        if self.n_agents < 7 or self.max_ticks < 1:
+            raise ValueError("Use n_agents >= 7 e max_ticks >= 1.")
+        if self.intervention_tick < 0:
+            raise ValueError("intervention_tick deve ser não negativo.")
+        if self.inject_at not in {"hub", "random", "influencer"}:
+            raise ValueError("Ponto de injeção desconhecido.")
+        if self.intervention not in {None, "factcheckers_hub", "factcheckers_peripheral", "remove_hubs"}:
+            raise ValueError("Intervenção desconhecida.")
+
 
 class InfoSimModel(mesa.Model):
     """
@@ -59,7 +73,7 @@ class InfoSimModel(mesa.Model):
     def __init__(self, config: SimulationConfig):
         # Mesa 3.x: passamos a seed ao Model (RNG interno). Mantemos também
         # um Random próprio para sorteios reprodutíveis do modelo.
-        super().__init__(rng=config.seed)
+        super().__init__(rng=config.activation_seed if config.activation_seed is not None else config.seed)
         self.config = config
         self.rng = random.Random(config.seed)
         self.tick = 0   # contador próprio de ticks (Mesa 3.x removeu schedule.time)
@@ -68,7 +82,7 @@ class InfoSimModel(mesa.Model):
         self.G: nx.Graph = build_network(
             topology=config.topology,
             n_agents=config.n_agents,
-            seed=config.seed,
+            seed=config.network_seed if config.network_seed is not None else config.seed,
         )
 
         # Inicializa LLM
@@ -78,12 +92,15 @@ class InfoSimModel(mesa.Model):
             enable_cache=config.enable_cache,
             cache_mode=config.cache_mode,
             temperature=config.temperature,
+            seed=config.llm_seed,
         )
 
         # Cria agentes (Mesa 3.x registra automaticamente em self.agents)
         self.agents_by_id: dict[int, InfoAgent] = {}
+        profile_seed = config.profile_seed if config.profile_seed is not None else config.seed
+        profile_rng = random.Random(f"profiles:{profile_seed}")
         for node_id in self.G.nodes():
-            profile = generate_profile(seed=config.seed + node_id)
+            profile = generate_profile(seed=profile_rng.getrandbits(128))
             agent = InfoAgent(
                 model=self,
                 profile=profile,
@@ -91,9 +108,17 @@ class InfoSimModel(mesa.Model):
                 node_id=node_id,
             )
             self.agents_by_id[node_id] = agent
+        self.initial_state = {
+            "edges": [list(edge) for edge in self.G.edges()],
+            "profiles": [{"node_id": node, **asdict(agent.profile)}
+                         for node, agent in self.agents_by_id.items()],
+        }
 
         # Nós removidos por intervenção (para a métrica de alcance ativo)
         self.removed_nodes: list[int] = []
+        self.removed_agents: dict[int, InfoAgent] = {}
+        self.intervention_applied_tick: Optional[int] = None
+        self.intervention_nodes: list[int] = []
 
         # Coleta de dados por tick
         self.datacollector = mesa.DataCollector(
@@ -101,15 +126,18 @@ class InfoSimModel(mesa.Model):
                 "reached_count": self._count_reached,
                 "reach_pct": lambda m: m._count_reached() / m.config.n_agents * 100,
                 "reach_pct_active": lambda m: (
-                    m._count_reached() / max(1, len(m.agents_by_id)) * 100
+                    m._count_reached_active() / max(1, len(m.agents_by_id)) * 100
                 ),
+                "correction_reach_pct": lambda m: m._count_corrections() / m.config.n_agents * 100,
                 "believers": self._count_believers,
+                "pending_messages": lambda m: sum(len(a.inbox) for a in m.agents_by_id.values()),
                 "tick": lambda m: m.tick,
             },
             agent_reporters={
                 "belief_level": "belief_level",
                 "agent_type": lambda a: a.profile.agent_type.value,
                 "has_seen": "has_seen_disinformation",
+                "has_seen_correction": "has_seen_correction",
             }
         )
 
@@ -117,6 +145,7 @@ class InfoSimModel(mesa.Model):
         self.seed_node: Optional[int] = None
         self._inject_initial_message()
         self.recorder = self._make_recorder()
+        self.datacollector.collect(self)
         logger.info(
             f"Simulação iniciada: {config.n_agents} agentes, "
             f"topologia={config.topology.value}, seed={config.seed}"
@@ -130,6 +159,7 @@ class InfoSimModel(mesa.Model):
             "n_agents": c.n_agents,
             "topology": c.topology.value,
             "seed": c.seed,
+            "network_seed": c.network_seed if c.network_seed is not None else c.seed,
             "inject_at": c.inject_at,
             "intervention": c.intervention,
             "intervention_tick": c.intervention_tick,
@@ -165,11 +195,14 @@ class InfoSimModel(mesa.Model):
         )
         self.seed_node = start_node
         seed_agent = self.agents_by_id[start_node]
+        self.initial_state["injection_node"] = start_node
         seed_agent.receive(msg)
         logger.info(f"Fake news injetada no nó {start_node} (grau={self.G.degree(start_node)})")
 
     def _apply_intervention(self) -> None:
         """Aplica intervenção no tick configurado."""
+        if not self.config.intervention or self.intervention_applied_tick is not None:
+            return
         if self.config.intervention == "factcheckers_hub":
             hubs = get_hub_nodes(self.G, top_k=max(1, self.config.n_agents // 10))
             for node_id in hubs:
@@ -177,6 +210,7 @@ class InfoSimModel(mesa.Model):
                 # que não altera nada do que o LLM efetivamente lê.
                 self.agents_by_id[node_id].profile.apply_factchecker_conversion()
             logger.info(f"Intervenção: {len(hubs)} fact-checkers inseridos em hubs")
+            self.intervention_nodes = hubs
 
         elif self.config.intervention == "factcheckers_peripheral":
             from network.topology import get_peripheral_nodes
@@ -186,17 +220,33 @@ class InfoSimModel(mesa.Model):
                 # que não altera nada do que o LLM efetivamente lê.
                 self.agents_by_id[node_id].profile.apply_factchecker_conversion()
             logger.info(f"Intervenção: {len(peripheral)} fact-checkers inseridos em nós periféricos")
+            self.intervention_nodes = peripheral
 
         elif self.config.intervention == "remove_hubs":
             hubs = get_hub_nodes(self.G, top_k=5)
             self.G.remove_nodes_from(hubs)
             for node_id in hubs:
-                self.agents_by_id.pop(node_id).remove()
+                agent = self.agents_by_id.pop(node_id)
+                self.removed_agents[node_id] = agent
+                agent.inbox.clear()
+                agent.remove()
             self.removed_nodes.extend(hubs)
+            self.intervention_nodes = hubs
             logger.info(f"Intervenção: {len(hubs)} supernós removidos da rede")
+        self.intervention_applied_tick = self.tick
+
+    def _population_agents(self):
+        yield from self.agents_by_id.values()
+        yield from self.removed_agents.values()
 
     def _count_reached(self) -> int:
+        return sum(a.has_seen_disinformation for a in self._population_agents())
+
+    def _count_reached_active(self) -> int:
         return sum(1 for a in self.agents_by_id.values() if a.has_seen_disinformation)
+
+    def _count_corrections(self) -> int:
+        return sum(a.has_seen_correction for a in self._population_agents())
 
     def _count_believers(self) -> int:
         return sum(1 for a in self.agents_by_id.values() if a.belief_level > 0.5)
@@ -214,7 +264,7 @@ class InfoSimModel(mesa.Model):
                 "original_content": m.original_content,
                 "sender_id": m.sender_id,
             }
-            for agent in self.agents_by_id.values()
+            for agent in self._population_agents()
             for m in agent.mutated_messages
         ]
 
@@ -224,33 +274,25 @@ class InfoSimModel(mesa.Model):
         if self.config.intervention and self.tick == self.config.intervention_tick:
             self._apply_intervention()
 
-        self.datacollector.collect(self)
         # Mesa 3.x: ativação aleatória dos agentes via AgentSet
         self.agents.shuffle_do("step")
         self.tick += 1
         if self.recorder:
             self.recorder.snapshot(self)
+        self.datacollector.collect(self)
 
-    def run(self) -> "SimulationResult":
+    def run(self, deadline: Optional[float] = None) -> "SimulationResult":
         """Executa a simulação completa até max_ticks ou extinção."""
-        prev_reached = 0
-        stagnation_count = 0
-        reached = 0
-
-        for tick in range(self.config.max_ticks):
-            self.step()
-            reached = self._count_reached()
-
-            # Condição de parada: sem novos agentes atingidos por 5 ticks
-            if reached == prev_reached:
-                stagnation_count += 1
-            else:
-                stagnation_count = 0
-                prev_reached = reached
-
-            if stagnation_count >= 5:
-                logger.info(f"Simulação extinta no tick {tick} (sem propagação por 5 ticks)")
+        stop_reason = "max_ticks"
+        self.llm.deadline = deadline
+        while self.tick < self.config.max_ticks:
+            if not any(a.inbox for a in self.agents_by_id.values()):
+                stop_reason = "extinct"
                 break
+            self.step()
+        if not any(a.inbox for a in self.agents_by_id.values()):
+            stop_reason = "extinct"
+        reached = self._count_reached()
 
         logger.info(
             f"Simulação concluída | Alcance: {reached}/{self.config.n_agents} "
@@ -267,12 +309,20 @@ class InfoSimModel(mesa.Model):
             model_data=self.datacollector.get_model_vars_dataframe(),
             agent_data=self.datacollector.get_agent_vars_dataframe(),
             final_reach_pct=reached / self.config.n_agents * 100,
-            extinction_tick=self.tick,
+            extinction_tick=self.tick if stop_reason == "extinct" else None,
+            ticks_run=self.tick,
+            stop_reason=stop_reason,
             llm_stats=self.llm.stats,
-            final_reach_pct_active=reached / max(1, len(self.agents_by_id)) * 100,
+            final_reach_pct_active=self._count_reached_active() / max(1, len(self.agents_by_id)) * 100,
+            final_correction_reach_pct=self._count_corrections() / self.config.n_agents * 100,
             mutations=self._collect_mutations(),
             n_removed=len(self.removed_nodes),
-            refusals_total=sum(a.refusal_count for a in self.agents_by_id.values()),
+            refusals_total=sum(a.refusal_count for a in self._population_agents()),
+            intervention_applied=self.intervention_applied_tick is not None,
+            intervention_applied_tick=self.intervention_applied_tick,
+            intervention_nodes=list(self.intervention_nodes),
+            initial_state=self.initial_state,
+            decision_audit=list(getattr(self.llm, "audit_log", [])),
         )
 
 
@@ -282,7 +332,7 @@ class SimulationResult:
     model_data: object       # DataFrame
     agent_data: object       # DataFrame
     final_reach_pct: float
-    extinction_tick: int
+    extinction_tick: Optional[int]
     llm_stats: dict
     # Alcance sobre os nós que restam: com remove_hubs, n_agents inflaria
     # artificialmente o efeito da intervenção.
@@ -290,3 +340,11 @@ class SimulationResult:
     mutations: list = field(default_factory=list)
     n_removed: int = 0
     refusals_total: int = 0
+    ticks_run: int = 0
+    stop_reason: str = "unknown"
+    final_correction_reach_pct: float = 0.0
+    intervention_applied: bool = False
+    intervention_applied_tick: Optional[int] = None
+    intervention_nodes: list[int] = field(default_factory=list)
+    initial_state: dict = field(default_factory=dict)
+    decision_audit: list[dict] = field(default_factory=list)
