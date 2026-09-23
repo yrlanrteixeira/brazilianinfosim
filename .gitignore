@@ -53,6 +53,7 @@ Thumbs.db
 desktop.ini
 
 # Project data / outputs
+data/outputs/tcc2/
 data/outputs/*.csv
 data/outputs/*.db
 data/outputs/*.sqlite

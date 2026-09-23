@@ -24,6 +24,7 @@ sys.path.insert(0, str(Path(__file__).parent / "src"))
 from simulation.engine import SimulationConfig, InfoSimModel
 from network.topology import Topology
 from metrics.analysis import plot_simulation, compare_results, summarize_result
+from simulation.persistence import campaign_directory, save_result
 
 
 def run_single(args) -> None:
@@ -40,6 +41,8 @@ def run_single(args) -> None:
         max_ticks=args.ticks,
         seed=args.seed,
         intervention=args.intervention or None,
+        intervention_tick=args.intervention_tick,
+        cache_mode=args.cache_mode,
         llm_provider=args.provider,
         llm_model=args.model,
     )
@@ -54,19 +57,22 @@ def run_single(args) -> None:
     model = InfoSimModel(config)
     result = model.run()
 
+    output_dir = campaign_directory("single")
+    label = f"sim_{config.topology.value}_{config.seed}_{config.intervention or 'none'}_t{config.intervention_tick}"
+    save_result(result, output_dir, label)
+
     summary = summarize_result(result)
     print("\n📊 Resultados:")
     for k, v in summary.items():
         print(f"  {k:30s}: {v}")
 
     # Salva gráfico
-    output_dir = Path("data/outputs")
     output_dir.mkdir(parents=True, exist_ok=True)
-    plot_path = output_dir / f"sim_{config.topology.value}_{config.seed}.png"
+    plot_path = output_dir / f"{label}.png"
     plot_simulation(result, save_path=str(plot_path))
 
 
-def run_all() -> None:
+def run_all(args) -> None:
     """Roda a matriz experimental completa.
 
     3 topologias × 2 intervenções × 2 mensagens × 3 seeds = 36 runs.
@@ -88,6 +94,7 @@ def run_all() -> None:
     results = []
     total = len(topologies) * len(interventions) * len(messages) * len(seeds)
     count = 0
+    output_dir = campaign_directory("matrix")
 
     for topology in topologies:
         for intervention in interventions:
@@ -103,14 +110,18 @@ def run_all() -> None:
                         seed=seed,
                         initial_message=msg_content,
                         intervention=intervention,
+                        intervention_tick=args.intervention_tick, cache_mode=args.cache_mode,
+                        llm_provider=args.provider, llm_model=args.model,
                     )
                     model = InfoSimModel(config)
                     result = model.run()
+                    save_result(result, output_dir / "runs",
+                                f"{topology.value}_{intervention or 'none'}_{msg_name}_{seed}")
                     results.append(result)
 
     # Tabela comparativa
     df = compare_results(results)
-    output_path = Path("data/outputs/experiment_matrix.csv")
+    output_path = output_dir / "experiment_matrix.csv"
     output_path.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(output_path, index=False)
     print(f"\n✅ Matriz experimental salva em: {output_path}")
@@ -130,6 +141,10 @@ def main():
     parser.add_argument("--provider",    type=str,  default=None,
                         choices=["ollama", "anthropic"],
                         help="Provedor de LLM (default: env LLM_PROVIDER ou 'ollama')")
+    parser.add_argument("--intervention-tick", type=int, default=0,
+                        help="Tick da intervenção; 0 aplica antes da primeira decisão")
+    parser.add_argument("--cache-mode", choices=["off", "exact", "semantic"], default="off",
+                        help="Campanhas científicas devem manter off")
     parser.add_argument("--model",       type=str,  default=None,
                         help="Modelo LLM (default: env LLM_MODEL ou default do provider)")
     parser.add_argument("--all",         action="store_true",            help="Roda matriz experimental completa")
@@ -143,7 +158,7 @@ def main():
         sys.exit(1)
 
     if args.all:
-        run_all()
+        run_all(args)
     else:
         run_single(args)
 

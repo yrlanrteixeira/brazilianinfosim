@@ -21,6 +21,7 @@ depois consolida com `--from-raw "data/outputs/mut_*_raw.csv"`.
 """
 import argparse
 import glob
+import json
 import sys
 import unicodedata
 from pathlib import Path
@@ -30,11 +31,13 @@ import pandas as pd
 from simulation.engine import SimulationConfig, InfoSimModel
 from simulation.messages import SUBJECTS
 from network.topology import Topology
+from llm.client import BackendUnavailable, InvalidLLMResponse
+from simulation.persistence import atomic_json, manifest
 from metrics.analysis import (
     summarize_result, mutation_index, mutation_by_hop, plot_mutation_by_hop,
 )
 
-OUT_DIR = Path("data/outputs")
+OUT_DIR = Path("data/outputs/tcc2")
 DEFAULT_SEEDS = [42, 123, 999, 7, 2024, 55, 2026, 314, 1, 88]
 
 
@@ -62,9 +65,11 @@ def parse_args():
     p.add_argument("--prefix", type=str, default="mutation",
                    help="prefixo dos CSVs de saída")
     p.add_argument("--temperature", type=float, default=1.0,
-                   help="temperatura do modelo (a 0.3 a mutação não ocorre)")
+                   help="temperatura do modelo (fixar antes da campanha)")
     p.add_argument("--from-raw", type=str, default=None,
                    help="agrega CSVs crus já existentes (glob) sem rodar o LLM")
+    p.add_argument("--resume", action="store_true",
+                   help="pula os pares (assunto, semente) já gravados")
     return p.parse_args()
 
 
@@ -80,35 +85,97 @@ def load_raw(pattern: str) -> list[dict]:
 
 
 def run_campaign(subjects: dict, seeds: list[int], n_agents: int,
-                 temperature: float) -> tuple[list, list]:
-    """Executa a campanha e devolve (resumos por run, mutações cruas)."""
-    raw, rows = [], []
+                 temperature: float, prefix: str,
+                 resume: bool = False) -> tuple[list, list]:
+    """
+    Executa a campanha, gravando a cada run concluído.
+
+    Campanha longa cai: gravar só no fim perde tudo o que já rodou.
+    """
+    if Path(prefix).name != prefix or not prefix:
+        raise ValueError("prefix deve ser um nome simples de arquivo")
+    metadata = manifest({"subjects": subjects, "n_agents": n_agents,
+                         "temperature": temperature, "cache_mode": "off",
+                         "topology": Topology.SCALE_FREE.value, "max_ticks": 100,
+                         "inject_at": "hub", "intervention": None})
+    rows, raw = [], []
+    checkpoint = OUT_DIR / f"{prefix}_checkpoint.json"
+    existing_csv = any((OUT_DIR / f"{prefix}_{kind}.csv").exists() for kind in ("runs", "raw"))
+    if resume and checkpoint.exists():
+        saved = json.loads(checkpoint.read_text(encoding="utf-8"))
+        if saved["manifest"] != metadata:
+            raise ValueError("Configuração, modelo ou código mudou. Use outro prefixo de campanha.")
+        rows, raw = saved["rows"], saved["raw"]
+        _persist(rows, raw, prefix, metadata)  # repara exportações interrompidas
+    elif resume and existing_csv:
+        raise ValueError("CSV sem manifesto verificável. Use outro prefixo de campanha.")
+    elif not resume and (checkpoint.exists() or existing_csv):
+        raise ValueError("Campanha já existe. Use --resume ou outro prefixo.")
+    done = {(r["subject"], r["seed"]) for r in rows}
+
     total = len(subjects) * len(seeds)
     i = 0
     for subject, msg in subjects.items():
         for seed in seeds:
             i += 1
+            if (subject, seed) in done:
+                print(f"[{i}/{total}] {subject:20s} seed={seed} -> já feito",
+                      flush=True)
+                continue
+
             cfg = SimulationConfig(
                 n_agents=n_agents, topology=Topology.SCALE_FREE, max_ticks=100,
                 seed=seed, initial_message=msg, intervention=None,
                 inject_at="hub", enable_cache=False,
                 temperature=temperature,
             )
-            result = InfoSimModel(cfg).run()
+            try:
+                result = InfoSimModel(cfg).run()
+            except (BackendUnavailable, InvalidLLMResponse) as error:
+                atomic_json(OUT_DIR / f"{prefix}_failure.json", {
+                    "manifest": metadata, "subject": subject, "seed": seed,
+                    "error": type(error).__name__, "detail": str(error),
+                    "raw_response": getattr(error, "raw_response", None),
+                })
+                raise
 
             # O embedder roda depois, em lote.
             s = summarize_result(result, with_mutation=False)
             s.update(subject=subject, seed=seed, cache_enabled=False)
-            rows.append(s)
 
-            for m in result.mutations:
-                raw.append(dict(m, subject=subject, seed=seed))
+            # Run curto faz uma ou duas chamadas, então a sequência dentro do
+            # cliente nunca dispara: a checagem tem que ser por run.
+            chamadas = s.get("api_calls", 0)
+            falhas = s.get("backend_errors", 0)
+            if falhas and falhas == chamadas:
+                raise BackendUnavailable(
+                    f"{subject} seed={seed}: todas as {falhas} chamada(s) ao "
+                    f"provider falharam. Sem isto o run entraria no CSV como "
+                    f"concluído."
+                )
+
+            rows.append(s)
+            raw.extend(dict(m, subject=subject, seed=seed)
+                       for m in result.mutations)
+
+            _persist(rows, raw, prefix, metadata)
+            done.add((subject, seed))
 
             print(f"[{i}/{total}] {subject:20s} seed={seed} -> "
                   f"alcance {s['final_reach_pct']:.0f}%, "
                   f"{len(result.mutations)} mutações, "
                   f"{s['refusals_agents']} recusas", flush=True)
     return rows, raw
+
+
+def _persist(rows: list[dict], raw: list[dict], prefix: str, metadata: dict) -> None:
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    atomic_json(OUT_DIR / f"{prefix}_checkpoint.json",
+                {"manifest": metadata, "rows": rows, "raw": raw})
+    pd.DataFrame(rows).to_csv(OUT_DIR / f"{prefix}_runs.csv", index=False)
+    pd.DataFrame(raw, columns=["hop", "content", "parent_content", "original_content",
+                              "sender_id", "subject", "seed"]).to_csv(
+        OUT_DIR / f"{prefix}_raw.csv", index=False)
 
 
 def main():
@@ -127,19 +194,24 @@ def main():
             sys.exit(f"Nenhum assunto casou com {args.subjects!r}")
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    rows, raw = run_campaign(subjects, seeds, args.n_agents, args.temperature)
+    try:
+        rows, raw = run_campaign(subjects, seeds, args.n_agents,
+                                 args.temperature, args.prefix,
+                                 resume=args.resume)
+    except (BackendUnavailable, InvalidLLMResponse, ValueError) as e:
+        runs_csv = OUT_DIR / f"{args.prefix}_runs.csv"
+        onde = (f"Os runs concluídos antes da falha estão em {runs_csv}."
+                if runs_csv.exists() else "Nenhum run foi gravado.")
+        sys.exit(f"\nCampanha abortada: {e}\n{onde}\n"
+                 f"Religue o provider e retome com --resume.")
 
-    runs_csv = OUT_DIR / f"{args.prefix}_runs.csv"
-    pd.DataFrame(rows).to_csv(runs_csv, index=False)
-    print(f"\n{runs_csv} salvo ({len(rows)} runs)", flush=True)
-
+    print(f"\n{OUT_DIR / f'{args.prefix}_runs.csv'} ({len(rows)} runs)",
+          flush=True)
     if not raw:
         print("Nenhuma mutação coletada: nada a agregar.", flush=True)
         return
-
-    raw_csv = OUT_DIR / f"{args.prefix}_raw.csv"
-    pd.DataFrame(raw).to_csv(raw_csv, index=False)
-    print(f"{raw_csv} salvo ({len(raw)} mutações)", flush=True)
+    print(f"{OUT_DIR / f'{args.prefix}_raw.csv'} ({len(raw)} mutações)",
+          flush=True)
 
     aggregate(raw, args.prefix)
 

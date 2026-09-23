@@ -1,6 +1,7 @@
 """Contratos científicos do motor, com decisões controladas e sem rede externa."""
 
 import sys
+import json
 from pathlib import Path
 
 import pytest
@@ -11,6 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from agents.agent import Decision, Message
 from agents.profiles import AgentType, generate_profile
 from metrics.analysis import summarize_result
+from simulation.persistence import save_result
 import simulation.engine as engine
 
 
@@ -199,3 +201,27 @@ def test_removal_changes_network_and_retains_exposure_in_result(monkeypatch):
     assert result.final_reach_pct == 10
     assert result.final_reach_pct_active == 0
     assert model.G.number_of_nodes() == len(model.agents) == 5
+
+
+def test_result_json_contains_final_metrics_and_provenance(monkeypatch, tmp_path):
+    result = build(monkeypatch, max_ticks=1, intervention="factcheckers_hub", intervention_tick=0).run()
+    save_result(result, tmp_path, "controle")
+    saved = json.loads((tmp_path / "controle.json").read_text(encoding="utf-8"))
+    assert saved["summary"]["intervention_applied"]
+    assert saved["model_data"][-1]["reach_pct"] == result.final_reach_pct
+    assert len(saved["manifest"]["source_sha256"]) == 64
+    assert saved["manifest"]["settings"]["intervention_tick"] == 0
+
+
+def test_expanded_runner_applies_treatment_and_saves_before_analysis(monkeypatch, tmp_path):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    import run_expanded
+
+    monkeypatch.setattr(engine, "LLMClient", lambda **_: ControlledLLM())
+    monkeypatch.setattr(run_expanded, "OUT_DIR", tmp_path)
+    row = run_expanded.run_one(engine.Topology.SCALE_FREE, "factcheckers_hub", "saude", 42)
+    assert row["intervention_applied"]
+    assert row["intervention_applied_tick"] == 0
+    assert row["final_reach_pct"] == 2.0
+    record = json.loads(next((tmp_path / "matrix").glob("*.json")).read_text(encoding="utf-8"))
+    assert record["manifest"]["settings"]["cache_mode"] == "off"
