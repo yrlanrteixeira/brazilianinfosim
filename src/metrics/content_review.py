@@ -82,10 +82,12 @@ def paired_content_effects(records: list[dict], reports: dict) -> list[dict]:
     successful = [record for record in records if record["status"] == "success"]
     controls = {record["block"]: record for record in successful
                 if record["summary"]["intervention"] == "none"}
+    by_id = {record["id"]: record for record in successful}
     pairs = []
     for record in successful:
-        control = controls.get(record["block"])
-        if record["summary"]["intervention"] == "none" or control is None:
+        control = (by_id.get(record["reference_id"]) if "reference_id" in record
+                   else controls.get(record["block"]))
+        if control is None or control["id"] == record["id"]:
             continue
         treated_review, control_review = reports.get(record["id"]), reports.get(control["id"])
         complete = bool(treated_review and control_review

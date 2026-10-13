@@ -1,0 +1,8 @@
+profile,action,refused,count
+amplificador,COMPARTILHAR_COM_COMENTARIO,False,2
+amplificador,QUESTIONAR,False,3
+cetico,COMPARTILHAR_COM_COMENTARIO,False,3
+fact_checker,COMPARTILHAR_COM_COMENTARIO,False,1
+fact_checker,REFUTAR,False,1
+indiferente,COMPARTILHAR_COM_COMENTARIO,False,4
+influenciador,COMPARTILHAR_COM_COMENTARIO,False,2

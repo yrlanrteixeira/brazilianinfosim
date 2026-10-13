@@ -124,3 +124,26 @@ def test_resume_cannot_mix_designs(fake_campaign, tmp_path):
     run_impact.run(cases, tmp_path, hours=1)
     with pytest.raises(ValueError, match="desenho mudou"):
         run_impact.run(run_impact.design(n_agents=60, pilot=True), tmp_path, hours=1, resume=True)
+
+
+def test_explicit_session_budget_allows_work_on_another_day(fake_campaign, tmp_path):
+    cases = run_impact.design(n_seeds=1, repeats=1, pilot=True)
+    run_impact.run(cases, tmp_path, hours=0, session_budget=True)
+    records = run_impact.run(cases, tmp_path, hours=1, resume=True, session_budget=True)
+    assert len(records) == 4 and all(r["status"] == "success" for r in records)
+    assert len(list((tmp_path / "budget_sessions").glob("*.json"))) == 2
+
+
+def test_retry_keeps_failed_audit_and_never_reruns_successes(fake_campaign, tmp_path):
+    cases = run_impact.design(n_seeds=1, repeats=1, pilot=True)
+    fake_campaign.fail = True
+    failed = run_impact.run(cases, tmp_path, hours=1, session_budget=True)
+    fake_campaign.fail = False
+    records = run_impact.run(cases, tmp_path, hours=1, resume=True, session_budget=True, retry_incomplete=True)
+    assert all(r["status"] == "success" for r in records)
+    assert fake_campaign.built == 7
+    archived = list((tmp_path / "attempt_history").glob("*/*.json"))
+    assert len(archived) == 3
+    assert json.loads(archived[0].read_text(encoding="utf-8"))["decision_audit"] == failed[0]["decision_audit"]
+    run_impact.run(cases, tmp_path, hours=1, resume=True, session_budget=True, retry_incomplete=True)
+    assert fake_campaign.built == 7

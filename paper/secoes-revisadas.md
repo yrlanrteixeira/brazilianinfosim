@@ -24,13 +24,13 @@ O problema central consiste em investigar quais padrões de circulação e trans
 
 O programa de investigação é organizado pelas seguintes questões, cuja cobertura efetiva é apresentada na Seção 5.4:
 
-- **QP1, estrutura de rede:** como alcance, tempo até patamares de exposição e persistência variam entre as topologias implementadas, consideradas as diferenças de conectividade e de composição dos cenários?
-- **QP2, perfis:** como os perfis e a proporção de agentes céticos se relacionam com as decisões e a circulação observadas? Há evidência suficiente para identificar um limiar de contenção?
-- **QP3, transformação textual:** quais alterações ocorrem durante a retransmissão e em que medida os registros permitem distinguir reformulação, contestação e mudança factual?
-- **QP4, intervenções:** quais diferenças de alcance são observadas entre controles e condições com conversão de nós em verificadores ou remoção de hubs?
-- **QP5, plausibilidade:** quais evidências seriam necessárias para comparar quantitativamente o simulador com modelos SIR/SEIR e com cascatas observadas no Brasil?
+- **QP1, influência da topologia:** de que forma a topologia da rede afeta a velocidade, o alcance e o padrão de propagação da desinformação entre agentes LLM?
+- **QP2, interação entre perfis:** como agentes céticos, amplificadores, influenciadores, verificadores e indiferentes interagem para acelerar ou retardar a disseminação? Nas condições simuladas, é possível identificar um limiar de ceticismo associado à contenção?
+- **QP3, mutação da informação:** em que medida os agentes transformam, adaptam e distorcem o conteúdo durante a retransmissão, e como essas mudanças afetam a persistência e o alcance?
+- **QP4, eficácia de intervenções:** qual é a eficácia comparativa de converter nós em verificadores, remover hubs e limitar retransmissões, considerando também o momento de aplicação?
+- **QP5, plausibilidade comportamental:** em que medida os padrões de propagação do simulador são consistentes com modelos SIR/SEIR e com registros empíricos de circulação de desinformação em redes sociais brasileiras?
 
-As questões delimitam a investigação, sem pressupor que todas tenham sido respondidas. O limiar de ceticismo, a comparação empiricamente calibrada com modelos epidemiológicos e a avaliação de limites de retransmissão permanecem além das conclusões sustentadas pelos resultados disponíveis.
+As cinco questões constituem o escopo da conclusão do estudo. A Seção 5.4 registra a cobertura das campanhas históricas; a Seção 3.6 define a campanha complementar necessária para ampliar essas respostas. A existência de um protocolo ou de um mecanismo implementado não equivale à realização de todos os experimentos.
 
 ## 1.3 Justificativa
 
@@ -52,10 +52,10 @@ Desenvolver e avaliar exploratoriamente um simulador de circulação de mensagen
 2. Gerar redes Erdős-Rényi, Barabási-Albert e Watts-Strogatz com parâmetros registrados, tratando-as como abstrações e considerando diferenças de conectividade na análise.
 3. Desenvolver o motor de execução e o registro das condições experimentais, das decisões e das mensagens efetivamente publicadas e recebidas.
 4. Definir operacionalmente alcance, tempo até patamares de exposição, extinção, alteração semântica e diferenças pareadas de alcance, explicitando denominadores, unidades, condições de cálculo e dados ausentes.
-5. Descrever os resultados das campanhas disponíveis e comparar, nos blocos compatíveis, controles com conversão de nós existentes em verificadores e remoção de hubs.
-6. Identificar limitações de mensuração, cobertura e validade, estabelecendo requisitos para revisão independente do conteúdo, análise de sensibilidade e futura comparação com dados empíricos e modelos epidemiológicos.
+5. Comparar, em blocos pareados, topologias com densidade controlada, perfis, níveis de ceticismo, supressão da mutação e intervenções preventivas e posteriores ao início da circulação.
+6. Avaliar alterações textuais e afirmações adicionais e comparar observáveis compatíveis do simulador com referências SIR/SEIR e dados brasileiros, explicitando a incerteza e os limites de validade.
 
-Os objetivos descrevem o escopo efetivamente desenvolvido e avaliado. A implementação de limites de retransmissão e a validação empírica nacional não são apresentadas como entregas concluídas.
+Os objetivos descrevem o escopo a concluir. Os resultados já obtidos e os experimentos ainda programados são identificados separadamente; a implementação dos controles está disponível, mas a campanha complementar principal ainda não foi executada.
 
 ## 1.5 Organização do trabalho
 
@@ -97,6 +97,7 @@ A geração padrão atribui pesos de 25% a amplificadores, 40% a indiferentes, 2
 | Cético | 0,80; 0,10 | 0,30; 0,15 | 0,25; 0,10 |
 | Influenciador | 0,40; 0,15 | 0,70; 0,15 | 0,55; 0,15 |
 | Verificador nativo | 0,90; 0,05 | 0,60; 0,15 | 0,10; 0,05 |
+| Indiferente, somente na campanha complementar com LLM | 0,50; 0,15 | 0,15; 0,10 | 0,50; 0,15 |
 
 Fonte: parâmetros da implementação auditada. Valores propostos para distinguir descrições comportamentais, sem calibração com respostas humanas.
 
@@ -104,7 +105,7 @@ Para cada dimensão, sorteia-se um valor normal e aplica-se o limite inferior 0 
 
 Os valores de ceticismo e propensão são convertidos em descrições qualitativas pelos limiares 0,4 e 0,7; o viés de confirmação usa 0,35 e 0,6. Esses pontos de corte são convenções do prompt. Não representam escalas psicométricas validadas, e a propensão a compartilhar não é usada diretamente como probabilidade de uma decisão do LLM.
 
-Agentes indiferentes seguem outra hipótese operacional: a cada mensagem processada, encaminham o texto com probabilidade fixa de 0,10 e, caso contrário, não o retransmitem. Eles não consultam o LLM. Seus parâmetros comportamentais sorteados não participam dessa decisão e, por isso, não integram a Tabela 2. Caso um indiferente seja convertido em verificador, passa a utilizar o procedimento de decisão correspondente ao novo perfil.
+Na configuração de referência da main, agentes indiferentes encaminham cada mensagem com probabilidade fixa de 0,10 e não consultam o LLM. Seus parâmetros sorteados não participam dessa regra. A campanha complementar habilita a consulta ao LLM também para esse perfil: somente nessa condição sua linha na Tabela 2 passa a compor a descrição usada na decisão. Caso um indiferente seja convertido em verificador, utiliza os parâmetros e o procedimento correspondentes ao novo perfil.
 
 O campo capital social não determina o grau dos nós nem participa da descrição enviada ao LLM na versão auditada. Por essa razão, foi retirado da tabela de parâmetros operacionais. Uma relação entre esse atributo, posição na rede e comportamento exigiria um mecanismo adicional e sua avaliação, ficando indicada como trabalho futuro.
 
@@ -273,6 +274,37 @@ Contrastes utilizam controles compatíveis e identificam a quantidade de blocos 
 
 A verificação do software por testes controlados avalia se regras, registros e métricas obedecem aos contratos definidos. Ela não substitui calibração comportamental nem validação externa. Estas últimas exigiriam dados de referência, critérios comparativos e experimentos próprios, ainda não concluídos.
 
+## 3.6 Protocolo complementar para conclusão das cinco questões
+
+A campanha complementar prevê 50 agentes, grau médio quatro e horizonte de 12 rodadas, com uma condição adicional de 24 rodadas para avaliar censura da persistência. Serão utilizados quatro textos sintéticos correspondentes a duas alegações, doze sementes de cenário e duas sementes de geração. Os textos não são quatro fatos independentes. O modelo previsto é Qwen3 4B instruct, quantização Q4_K_M, temperatura 0,3 e cache desabilitado. Esses valores são hipóteses de projeto e escolhas de viabilidade, sem calibração comportamental nacional. O prompt de decisão da main será preservado, e todos os perfis consultarão o LLM. O lote difere, portanto, do Qwen histórico com prompt contextual_v5.
+
+Cada bloco contém um controle e 21 condições: duas topologias alternativas; cinco proporções alternativas de céticos, completando a grade 0%, 20%, 40%, 60%, 80% e 100%; quatro perfis alternativos do emissor; supressão da mutação; quatro intervenções nos momentos zero e dois; e ampliação do horizonte. A grade prevê 2.112 execuções. A composição fora do emissor varia por subconjuntos aninhados, preservando os demais perfis. A densidade é igualada por adição ou remoção de arestas sem desconectar o grafo. Consequentemente, as redes são derivadas das famílias geradoras, e não realizações inalteradas dos modelos canônicos.
+
+As sementes, o texto e a identidade do emissor são mantidos em cada contraste. As atualizações são síncronas: um agente processa na rodada seguinte as mensagens recebidas durante a rodada atual. O limite de retransmissão permite até dois destinatários por publicação. As conversões atingem 10% dos agentes; a remoção atinge cinco hubs, também 10% na população principal prevista. Intervenções posteriores à extinção permanecem na análise por intenção de tratar, com indicação de que não foram aplicadas.
+
+A contenção operacional é definida como exposição de apoio à alegação em até 10% da população inicial. O limiar exploratório corresponde ao menor nível da grade em que pelo menos 80% dos cenários apresentam contenção e os níveis superiores também atendem a esse critério. Os cortes são convenções explícitas, com análises de sensibilidade para 5% e 20% de alcance. Um limiar pode não ser identificado. A análise requer todos os blocos previstos para essa família e a revisão dos textos; resultados incompletos não geram um limiar artificial.
+
+As diferenças serão resumidas por média, mediana e intervalos exploratórios obtidos por reamostragem de sementes de cenário, preservando juntas as mensagens e réplicas da mesma semente. Menos de seis sementes independentes resultará apenas em descrição, sem intervalo de reamostragem. Esse mínimo é uma regra de apresentação, não demonstração de poder estatístico. Os contrastes de topologia mantêm identificada a família de referência para impedir a agregação de diferenças em direções opostas.
+
+Para QP5, os observáveis externos são publicadores distintos de cada imagem e o tempo relativo de aparecimento desses publicadores. O conjunto brasileiro de Reis et al. (2020), versão 3, contém registros anonimizados de publicações, não de leitores. Portanto, seu tamanho observado não deve ser comparado ao percentual de agentes que receberam mensagens. No simulador, a comparação utiliza apenas publicações de textos classificados como apoio à alegação inicial e registra separadamente as execuções sem publicação elegível.
+
+$$
+u_p = \frac{t_{\lceil pn\rceil}-t_1}{t_n-t_1}
+$$
+Equação 8. Tempo relativo para atingir a fração p dos n publicadores observados, ordenados pela primeira publicação; p assume 0,5 e 0,9. A medida é ausente quando a duração é zero.
+
+$$
+W_1(F,G)=\int |F(x)-G(x)|\,dx
+$$
+Equação 9. Distância de Wasserstein entre distribuições empíricas. O tamanho usa logaritmo natural de um mais o número de publicadores; os tempos relativos são adimensionais.
+
+$$
+D_{KS}=\sup_x |F(x)-G(x)|
+$$
+Equação 10. Distância máxima entre as funções de distribuição acumulada, utilizada como estatística descritiva, sem teste de significância.
+
+Os 135 clusters de imagens foram separados em 94 para ajuste e 41 para avaliação, por sorteio com semente fixa. Os identificadores são preservados. A separação por imagem não garante independência entre alegações semanticamente semelhantes. SIR e SEIR foram ajustados na grade de probabilidades de transmissão 0,05; 0,1; 0,2; 0,4; 0,8 e recuperação 0,2; 0,5; 1,0. O critério soma a distância de Wasserstein do tamanho transformado e de u50; ausência de tempos relativos simulados recebe penalidade um. A referência SEIR introduz uma rodada de latência. Cada combinação usa trinta realizações sintéticas balanceadas entre as três famílias; a avaliação usa 120 novas realizações por modelo. Essa adaptação define a primeira entrada no estado propagador como proxy de primeira publicação.
+
 # 4 DESENVOLVIMENTO DO SIMULADOR
 
 ## 4.1 Organização da implementação
@@ -419,9 +451,9 @@ A revisão exploratória examinou 46 respostas REFUTAR, correspondentes a 36 tex
 
 O documento original também relata um detalhe adicional, em uma contestação sobre benefício social, que não era sustentado pela fonte consultada naquela análise. A observação indica a necessidade de avaliar separadamente a posição central e os detalhes factuais de uma correção. Não demonstra um limiar geral de contenção nem substitui uma avaliação completa dos textos recebidos.
 
-## 5.4 Cobertura das questões de pesquisa
+## 5.4 Cobertura das questões nas campanhas históricas
 
-**Tabela 10. Situação das questões diante da evidência disponível.**
+**Tabela 10. Cobertura das questões nos lotes históricos, antes da campanha complementar.**
 
 | Questão | Situação | Evidência e limite |
 | --- | --- | --- |
@@ -433,7 +465,32 @@ O documento original também relata um detalhe adicional, em uma contestação s
 
 Fonte: síntese dos resultados e de sua cobertura experimental.
 
-## 5.5 Limitações e ameaças à validade
+## 5.5 Piloto de custo e verificação do fluxo complementar
+
+O piloto complementar executou quatro condições com dez agentes e três rodadas: controle, emissor verificador, limite preventivo de encaminhamentos e supressão da mutação. As quatro execuções terminaram sem falha, totalizando dezesseis chamadas ao LLM e aproximadamente 256,7 segundos. O controle inclui o custo de carregamento do modelo. Esses tempos não estimam diretamente o custo da campanha com cinquenta agentes. O piloto é excluído das estimativas da campanha principal.
+
+No controle, no limite de encaminhamentos e na supressão da mutação, o processo terminou após uma rodada, sem publicação. Na condição com emissor verificador, houve publicação de contestações e atividade ao final das três rodadas. O alcance de apoio à alegação inicial permaneceu em um de dez agentes nas quatro condições, enquanto a condição com verificador alcançou todos os agentes com algum conteúdo. Essa diferença mostra por que circulação de mensagens e circulação da alegação falsa precisam ser medidas separadamente.
+
+Os onze textos distintos foram revisados por IA, com autoria e justificativas registradas, sem validação humana independente. Dez eventos de publicação alteraram o texto anterior após remoção do prefixo de instrumentação. A distância semântica média entre versões consecutivas foi 0,2001, calculada com o modelo paraphrase-multilingual-MiniLM-L12-v2 em versão fixada. A medida inclui contestações e reformulações; não representa proporção de falsidades.
+
+Uma contestação atribuiu a decisão sobre o benefício a um ministério agrícola, enquanto o serviço oficial identifica o Ministério do Desenvolvimento e Assistência Social, Família e Combate à Fome como responsável. A informação incorreta aparece em duas formas textuais, com e sem o prefixo de instrumentação. Trata-se de uma mesma afirmação administrativa adicional, não de dois erros independentes. O exemplo demonstra que negar a alegação original não garante a correção de todos os detalhes acrescentados.
+
+## 5.6 Referência empírica e comparação inicial com SIR/SEIR
+
+O arquivo brasileiro consultado contém 2.209 publicações agrupadas em 135 clusters de imagens. A média de publicadores distintos por cluster é 13,85 e a mediana é seis. Sete clusters excedem cinquenta publicadores, evidenciando uma limitação de capacidade da população prevista para a simulação. Os timestamps do arquivo abrangem 26 de abril a 22 de outubro de 2018; esse intervalo efetivamente observado é reportado, sem substituí-lo pela descrição mais restrita do período eleitoral no artigo.
+
+**Tabela 11. Distâncias no conjunto de avaliação reservado, com 41 clusters de imagens.**
+
+| Referência | Transmissão / recuperação | W1 do tamanho em log(1+n) | W1 de u50 | DKS de u50 |
+| --- | --- | --- | --- | --- |
+| SIR | 0,2 / 0,5 | 0,3077 | 0,1898 | 0,4843 |
+| SEIR | 0,2 / 0,5 | 0,4319 | 0,2146 | 0,5201 |
+
+Fonte: metadados brasileiros de Reis et al. (2020), versão 3, e referências sintéticas calculadas pelo protocolo complementar. Para tempos relativos, são elegíveis 38 clusters observados e 84 das 120 realizações de cada referência; durações zero são excluídas apenas dessas medidas e continuam na comparação de tamanho.
+
+Nas condições avaliadas, SIR apresentou distâncias menores que SEIR. A comparação não estabelece equivalência comportamental: imagens políticas e textos sintéticos diferem em modalidade e contexto, e a normalização temporal não converte rodadas em horas reais. O componente LLM será incorporado após a campanha principal e a revisão de conteúdo. O piloto não integra essa comparação. A QP5, portanto, já dispõe de referência externa e procedimento executável, mas sua resposta comparativa completa ainda depende dos resultados LLM previstos.
+
+## 5.7 Limitações e ameaças à validade
 
 Os resultados dependem do modelo, prompt, mensagens, regras de transmissão, parâmetros e grafos utilizados. A mudança simultânea de vários componentes entre campanhas impede identificar a causa isolada de suas diferenças. A seleção de casos concluídos dentro de um orçamento também condiciona a cobertura; uma grade planejada não equivale a um experimento integralmente realizado.
 
@@ -441,7 +498,7 @@ A validade de construção é limitada pela diferença entre exposição, posiç
 
 A validade externa é limitada pela ausência de calibração comportamental e de redes observadas. Os atributos brasileiros são escolhas de contextualização. O simulador não representa integralmente recomendação algorítmica, grupos fechados, circulação entre plataformas ou formação de nichos. Nenhum desses mecanismos deve ser inferido apenas da escolha de uma topologia.
 
-As trajetórias SEIR teóricas exploratórias mencionadas no material original não constituem réplicas LLM nem uma validação empírica do protótipo. Comparações futuras precisam definir variáveis equivalentes, procedimento de ajuste e critérios de avaliação antes de sustentar correspondência entre modelos.
+As trajetórias SEIR teóricas exploratórias mencionadas no material original não constituem réplicas LLM nem uma validação empírica do protótipo. A nova comparação externa acrescenta observáveis, separação entre ajuste e avaliação e distâncias quantitativas, mas não valida os perfis humanos nem remove as diferenças entre modalidades e populações.
 
 # 6 CONSIDERAÇÕES FINAIS
 
@@ -451,8 +508,8 @@ No lote Llama 3.1, a maioria dos controles não ultrapassou o emissor, enquanto 
 
 No lote Qwen3, o texto inicial literal não foi retransmitido e contestações circularam. A alternância de linhagem revelou que um contador interno pode registrar alto alcance do boato sem demonstrar apoio textual à alegação inicial. Esse resultado motivou a separação da medição por conteúdo, com auditoria de recebimentos e explicitação de classificações pendentes.
 
-As correções de implementação e os testes de regressão melhoram a verificabilidade do simulador, mas não acrescentam réplicas às campanhas históricas. As conclusões permanecem condicionadas às configurações observadas e não são generalizadas para o comportamento da sociedade brasileira.
+As correções de implementação e os testes de regressão melhoram a verificabilidade do simulador. O novo piloto e o ajuste das referências SIR/SEIR são apresentados separadamente das campanhas históricas. As conclusões permanecem condicionadas às configurações observadas e não são generalizadas para o comportamento da sociedade brasileira.
 
-Os próximos estudos devem priorizar revisão independente dos textos, avaliação das afirmações adicionais, maior cobertura de blocos e réplicas, análise de sensibilidade dos parâmetros e comparação de redes com conectividade controlada. A avaliação de limites de retransmissão e de intervenções tardias depende de experimentos específicos.
+A conclusão das cinco questões exige executar a campanha complementar, revisar seus textos, avaliar afirmações adicionais e interpretar conjuntamente os contrastes e a referência externa. O protocolo, os controles, a persistência, a retomada e os comandos de análise estão implementados. Esses experimentos integram o escopo de conclusão do trabalho e não são tratados como questões abandonadas.
 
-Capital social só deverá integrar tabelas de mecanismos efetivos após ser conectado a uma regra operacional e avaliado. Sua possível relação com grau, exposição ou decisão constitui trabalho futuro. Também permanecem futuras a validação dos perfis com respostas humanas, a calibração com dados brasileiros e a comparação quantitativa com modelos SIR/SEIR. Até então, o trabalho deve ser apresentado como simulação de agentes contextualizada no Brasil, com evidência exploratória e limites de validade explicitados.
+Capital social só deverá integrar tabelas de mecanismos efetivos após ser conectado a uma regra operacional e avaliado. Sua possível relação com grau, exposição ou decisão constitui trabalho futuro. Também permanece futura a validação dos perfis com respostas humanas representativas. A comparação quantitativa com dados brasileiros e modelos SIR/SEIR integra a campanha complementar em conclusão, sem ser confundida com calibração nacional dos agentes.

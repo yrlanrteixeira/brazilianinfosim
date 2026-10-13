@@ -16,6 +16,7 @@ import random
 import sys
 import time
 from urllib.request import urlopen
+from uuid import uuid4
 
 from dotenv import load_dotenv
 import pandas as pd
@@ -27,7 +28,7 @@ from metrics.analysis import summarize_result
 from network.topology import Topology, network_stats
 from simulation.engine import InfoSimModel, SimulationConfig
 from simulation.messages import SUBJECTS
-from simulation.persistence import atomic_json, manifest, save_result
+from simulation.persistence import archive_source, atomic_json, manifest, save_result
 
 
 def design(n_seeds=20, repeats=2, n_agents=50, ticks=30, pilot=False):
@@ -65,13 +66,13 @@ def design(n_seeds=20, repeats=2, n_agents=50, ticks=30, pilot=False):
     return cases
 
 
-def local_model_metadata():
+def local_model_metadata(model_name="llama3.1:8b"):
     base = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434").rstrip("/")
     with urlopen(f"{base}/api/tags", timeout=10) as response:
         models = json.load(response)["models"]
-    model = next((m for m in models if m["name"] == "llama3.1:8b"), None)
+    model = next((m for m in models if m["name"] == model_name), None)
     if model is None:
-        raise RuntimeError("llama3.1:8b não está instalado no Ollama configurado.")
+        raise RuntimeError(f"{model_name} não está instalado no Ollama configurado.")
     with urlopen(f"{base}/api/version", timeout=10) as response:
         server = json.load(response)
     return {"model": model, "server": server, "base_url": base}
@@ -116,10 +117,14 @@ def export_analysis(directory, records, planned, status):
     })
 
 
-def run(cases, directory, hours, resume=False, metadata=None):
+def run(cases, directory, hours, resume=False, metadata=None, exporter=None,
+        session_budget=False, retry_incomplete=False):
+    exporter = exporter or export_analysis
     directory.mkdir(parents=True, exist_ok=True)
     manifest_path = directory / "campaign.json"
-    settings = {"cases": [{**c, "config": asdict(c["config"])} for c in cases]}
+    settings = {"cases": [{**c, "config": asdict(c["config"])} for c in cases],
+                "llm_provider": cases[0]["config"].llm_provider if cases else None,
+                "llm_model": cases[0]["config"].llm_model if cases else None}
     identity = manifest(settings)
     if manifest_path.exists():
         if not resume:
@@ -129,19 +134,30 @@ def run(cases, directory, hours, resume=False, metadata=None):
             raise ValueError("Código ou desenho mudou; não é permitido misturar campanhas.")
         if metadata is not None and campaign["model_metadata"] != metadata:
             raise ValueError("Modelo ou servidor mudou; abra outra campanha.")
+        if campaign.get("session_budget", False) != session_budget:
+            raise ValueError("Regra de orçamento mudou; abra outra campanha.")
     else:
         started = time.time()
         campaign = {"identity": identity, "started_epoch": started,
                     "deadline_epoch": started + hours * 3600,
-                    "model_metadata": metadata, "hours": hours}
+                    "model_metadata": metadata, "hours": hours, "session_budget": session_budget}
+        archive_source(directory, identity["source_sha256"])
         atomic_json(manifest_path, campaign)
-    deadline = time.monotonic() + max(0, campaign["deadline_epoch"] - time.time())
+    if session_budget:
+        session_started = time.time()
+        atomic_json(directory / "budget_sessions" / f"{uuid4().hex}.json", {
+            "started_epoch": session_started, "hours": hours,
+            "deadline_epoch": session_started + hours * 3600, "retry_incomplete": retry_incomplete,
+        })
+        deadline = time.monotonic() + max(0, hours * 3600)
+    else:
+        deadline = time.monotonic() + max(0, campaign["deadline_epoch"] - time.time())
     attempts_dir = directory / "attempts"
     attempts_dir.mkdir(exist_ok=True)
     records = [json.loads(path.read_text(encoding="utf-8")) for path in sorted(attempts_dir.glob("*.json"))]
-    attempted = {r["id"] for r in records}
+    attempted = {r["id"] for r in records if r["status"] == "success" or not retry_incomplete}
     status = "running"
-    export_analysis(directory, records, len(cases), status)
+    exporter(directory, records, len(cases), status)
     failures = 0
     for case in cases:
         if case["id"] in attempted:
@@ -151,7 +167,16 @@ def run(cases, directory, hours, resume=False, metadata=None):
             break
         start = time.monotonic()
         model = None
+        previous = next((r for r in records if r["id"] == case["id"]), None)
+        attempt_number = previous.get("attempt_number", 1) + 1 if previous else 1
+        if previous:
+            archive = directory / "attempt_history" / case["id"] / f"{attempt_number - 1:04d}.json"
+            if archive.exists() and json.loads(archive.read_text(encoding="utf-8")) != previous:
+                raise ValueError("Histórico de tentativa diverge; não será sobrescrito.")
+            if not archive.exists():
+                atomic_json(archive, previous)
         record = {k: v for k, v in case.items() if k != "config"}
+        record["attempt_number"] = attempt_number
         record["config"] = asdict(case["config"])
         record["started_at"] = datetime.now(timezone.utc).isoformat()
         try:
@@ -176,8 +201,9 @@ def run(cases, directory, hours, resume=False, metadata=None):
                 status = "paused_after_three_failures"
         record["elapsed_seconds"] = time.monotonic() - start
         atomic_json(attempts_dir / f"{case['id']}.json", record)
+        records = [r for r in records if r["id"] != case["id"]]
         records.append(record)
-        export_analysis(directory, records, len(cases), status)
+        exporter(directory, records, len(cases), status)
         print(f"{len(records)}/{len(cases)} {record['status']} {case['subject']} "
               f"{case['config'].intervention or 'control'} t={case['config'].intervention_tick} "
               f"{record['elapsed_seconds']:.1f}s", flush=True)
@@ -185,7 +211,7 @@ def run(cases, directory, hours, resume=False, metadata=None):
             break
     else:
         status = "finished_with_failures" if any(r["status"] != "success" for r in records) else "completed"
-    export_analysis(directory, records, len(cases), status)
+    exporter(directory, records, len(cases), status)
     return records
 
 

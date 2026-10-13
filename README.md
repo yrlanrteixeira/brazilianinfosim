@@ -240,3 +240,9 @@ A revisão acadêmica fica em [paper/README.md](paper/README.md), com o texto
 editável de substituição, as equações, as hipóteses de simulação e a delimitação
 dos resultados históricos. Os documentos não apresentam os testes desta branch
 como campanhas realizadas com LLM.
+
+A conclusão das cinco questões segue o [roteiro de execução](paper/roteiro-execucao.md)
+e o [protocolo experimental](paper/protocolo-conclusao.md). O `run_research.py`
+prepara contrastes de rede, perfis, ceticismo, mutação e intervenções, com
+retomada por sessão. O piloto diagnóstico e a referência brasileira estão
+documentados separadamente da campanha principal, prevista para execução pelo autor.

@@ -71,6 +71,23 @@ def get_hub_nodes(G: nx.Graph, top_k: int = 5) -> list[int]:
     return [node for node, _ in degree_sorted[:top_k]]
 
 
+def match_edge_count(graph: nx.Graph, target: int, seed: int) -> nx.Graph:
+    """Normaliza a densidade sem desconectar o grafo; altera a família geradora."""
+    n = len(graph)
+    if not n - 1 <= target <= n * (n - 1) // 2 or not nx.is_connected(graph):
+        raise ValueError("Grafo conexo e número viável de arestas são obrigatórios.")
+    rng = random.Random(f"edge-count:{seed}")
+    before = graph.number_of_edges()
+    if before < target:
+        graph.add_edges_from(rng.sample(sorted(nx.non_edges(graph)), target - before))
+    while graph.number_of_edges() > target:
+        bridges = {frozenset(edge) for edge in nx.bridges(graph)}
+        candidates = [edge for edge in sorted(graph.edges()) if frozenset(edge) not in bridges]
+        graph.remove_edge(*rng.choice(candidates))
+    graph.graph.update(edges_before_matching=before, edges_after_matching=target)
+    return graph
+
+
 def get_peripheral_nodes(G: nx.Graph, bottom_k: int = 5) -> list[int]:
     """Retorna os bottom_k nós com menor grau (periféricos)."""
     degree_sorted = sorted(G.degree(), key=lambda x: x[1])

@@ -1,0 +1,42 @@
+{
+  "accessed_on": "2026-10-13",
+  "provenance": "Textos sintéticos, não transcrições de mensagens de pessoas reais.",
+  "truth_status": "As afirmações centrais dos quatro estímulos contradizem as fontes indicadas.",
+  "scope": "Duas alegações, duas redações por alegação; não são quatro fatos independentes.",
+  "population": "Rede sintética contextualizada no Brasil, sem calibração comportamental nacional.",
+  "stimuli": [
+    {
+      "id": "health_dna_a",
+      "theme": "Saúde/vacinas",
+      "claim": "vaccine_dna",
+      "text": "Recebi a informação de que as vacinas de RNA contra a covid-19 alteram permanentemente o DNA de quem toma. Avisem a família.",
+      "evidence": "O material educativo da USP explica que o RNA das vacinas não se integra ao genoma humano. A vacinação não modifica o DNA da pessoa.",
+      "source": "https://jornal.usp.br/podcast/fake-news-nao-pod-3-as-vacinas-de-dna-e-rna-contra-a-covid-19-alteram-nosso-dna-e-nos-transformam-em-uma-nova-especie/"
+    },
+    {
+      "id": "benefit_auto_a",
+      "theme": "Economia/benefícios",
+      "claim": "automatic_benefit",
+      "text": "Me disseram que basta entrar no Cadastro Único para receber automaticamente o Bolsa Família. Quem se cadastrar já tem o benefício garantido.",
+      "evidence": "O serviço oficial informa que o Cadastro Único é necessário, mas a entrada no Bolsa Família depende da análise das regras e do orçamento. A inscrição não garante aprovação.",
+      "source": "https://www.gov.br/pt-br/servicos/receber-o-bolsa-familia"
+    },
+    {
+      "id": "health_dna_b",
+      "theme": "Saúde/vacinas",
+      "claim": "vaccine_dna",
+      "text": "Pessoal, comentaram no grupo que a vacina de RNA da covid muda o nosso material genético para sempre. Estou passando o aviso para vocês.",
+      "evidence": "O material educativo da USP explica que o RNA das vacinas não se integra ao genoma humano. A vacinação não modifica o DNA da pessoa.",
+      "source": "https://jornal.usp.br/podcast/fake-news-nao-pod-3-as-vacinas-de-dna-e-rna-contra-a-covid-19-alteram-nosso-dna-e-nos-transformam-em-uma-nova-especie/"
+    },
+    {
+      "id": "benefit_auto_b",
+      "theme": "Economia/benefícios",
+      "claim": "automatic_benefit",
+      "text": "Aviso para o grupo: a inscrição no Cadastro Único aprova o Bolsa Família na hora, sem outra análise. É só cadastrar que o pagamento fica garantido.",
+      "evidence": "O serviço oficial informa que o Cadastro Único é necessário, mas a entrada no Bolsa Família depende da análise das regras e do orçamento. A inscrição não garante aprovação.",
+      "source": "https://www.gov.br/pt-br/servicos/receber-o-bolsa-familia"
+    }
+  ],
+  "pilot": true
+}

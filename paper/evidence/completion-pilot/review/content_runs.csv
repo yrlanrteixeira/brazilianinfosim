@@ -1,0 +1,5 @@
+id,block,family,condition,seed_index,stimulus_id,replicate,classification_complete,any_reach_pct,literal_reach_pct,supports_reach_pct,supports_lower_pct,supports_upper_pct,unique_publishers_any,published_changes,lexical_distance_mean,ticks_observed,censored,intervention_applied,literal_T25,literal_T50,literal_T75,supports_T25,supports_T50,supports_T75,actual_skeptics,n_agents,skeptic_fraction_nominal
+46b9371b33f0b119afbd,s000-benefit_auto_a-r0,emitter,fact_checker,0,benefit_auto_a,0,True,100.0,10.0,10.0,10.0,10.0,10,10,0.41418021935907323,3,True,False,,,,,,,2,10,0.2
+cdaebb172ba0bdda428d,s000-benefit_auto_a-r0,reference,control,0,benefit_auto_a,0,True,10.0,10.0,10.0,10.0,10.0,0,0,,1,False,False,,,,,,,2,10,0.2
+e56d49b4086f26e42708,s000-benefit_auto_a-r0,mutation,literal_forwarding,0,benefit_auto_a,0,True,10.0,10.0,10.0,10.0,10.0,0,0,,1,False,False,,,,,,,2,10,0.2
+e6cf768099900bcfe762,s000-benefit_auto_a-r0,intervention,limit_forwarding_t0,0,benefit_auto_a,0,True,10.0,10.0,10.0,10.0,10.0,0,0,,1,False,True,,,,,,,2,10,0.2

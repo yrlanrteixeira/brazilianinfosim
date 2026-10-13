@@ -1,0 +1,114 @@
+{
+  "3fdde199b1921a0b79425ecd62dbd84b9266d302bf665a6ea2c40b29b03c1e24": {
+    "original_content": "Me disseram que basta entrar no Cadastro Único para receber automaticamente o Bolsa Família. Quem se cadastrar já tem o benefício garantido.",
+    "content": "Me disseram que basta entrar no Cadastro Único para receber automaticamente o Bolsa Família. Quem se cadastrar já tem o benefício garantido.",
+    "literal_original": true,
+    "stance": "supports",
+    "reviewer": "Codex (AI review; no independent human validation)",
+    "rationale": "Afirma a concessao automatica do beneficio apos cadastro.",
+    "source": "https://www.gov.br/pt-br/servicos/receber-o-bolsa-familia",
+    "factual_review_scope": "central claim only; not an accuracy score for the entire text"
+  },
+  "68b1a47c2e76773f2e4637d5621e7434b070bec7e898268abf843049f41fff17": {
+    "original_content": "Me disseram que basta entrar no Cadastro Único para receber automaticamente o Bolsa Família. Quem se cadastrar já tem o benefício garantido.",
+    "content": "[REFUTAÇÃO] Não é verdade que basta entrar no Cadastro Único para receber automaticamente o Bolsa Família. O benefício é concedido com base em critérios de renda, situação familiar e outros fatores. O Cadastro Único é o primeiro passo, mas não garante o recebimento do Bolsa Família. A decisão final é feita pelo Ministério da Agricultura, Pecuária e Desenvolvimento Rural, com base em análise de dados. Para confirmar, recomendo verificar o site oficial do governo brasileiro ou o Ministério da Economia.",
+    "literal_original": false,
+    "stance": "rejects",
+    "reviewer": "Codex (AI review; no independent human validation)",
+    "rationale": "Nega explicitamente que o cadastro garanta a concessao automatica do beneficio; a posicao e contraria a alegacao inicial.",
+    "source": "https://www.gov.br/pt-br/servicos/receber-o-bolsa-familia",
+    "factual_review_scope": "central claim only; not an accuracy score for the entire text",
+    "additional_factual_issue": "Atribui a decisao ao Ministerio da Agricultura, Pecuaria e Desenvolvimento Rural. O servico oficial identifica o MDS como orgao responsavel. A contestacao inclui informacao administrativa incorreta."
+  },
+  "eefed60a23e0b951ad0ddf97853f433b0e695f6bc2623a5b9bd05707f3a33034": {
+    "original_content": "Me disseram que basta entrar no Cadastro Único para receber automaticamente o Bolsa Família. Quem se cadastrar já tem o benefício garantido.",
+    "content": "A informação tá certa: entrar no Cadastro Único não dá direto o Bolsa Família. Precisa de análise de renda e situação familiar. O governo decide com base em dados. Vale a pena conferir no site oficial do Ministério da Economia. #FatoVerdadeiro",
+    "literal_original": false,
+    "stance": "rejects",
+    "reviewer": "Codex (AI review; no independent human validation)",
+    "rationale": "Nega explicitamente que o cadastro garanta a concessao automatica do beneficio; a posicao e contraria a alegacao inicial.",
+    "source": "https://www.gov.br/pt-br/servicos/receber-o-bolsa-familia",
+    "factual_review_scope": "central claim only; not an accuracy score for the entire text"
+  },
+  "f40f9bd38bf1de551da9633540bf8b1c1c51514a6dee4d0f8128ca95f5efb9d3": {
+    "original_content": "Me disseram que basta entrar no Cadastro Único para receber automaticamente o Bolsa Família. Quem se cadastrar já tem o benefício garantido.",
+    "content": "Não é verdade que basta entrar no Cadastro Único para receber automaticamente o Bolsa Família. O benefício é concedido com base em critérios de renda, situação familiar e outros fatores. O Cadastro Único é o primeiro passo, mas não garante o recebimento do Bolsa Família. A decisão final é feita pelo Ministério da Agricultura, Pecuária e Desenvolvimento Rural, com base em análise de dados. Para confirmar, recomendo verificar o site oficial do governo brasileiro ou o Ministério da Economia.",
+    "literal_original": false,
+    "stance": "rejects",
+    "reviewer": "Codex (AI review; no independent human validation)",
+    "rationale": "Nega explicitamente que o cadastro garanta a concessao automatica do beneficio; a posicao e contraria a alegacao inicial.",
+    "source": "https://www.gov.br/pt-br/servicos/receber-o-bolsa-familia",
+    "factual_review_scope": "central claim only; not an accuracy score for the entire text",
+    "additional_factual_issue": "Atribui a decisao ao Ministerio da Agricultura, Pecuaria e Desenvolvimento Rural. O servico oficial identifica o MDS como orgao responsavel. A contestacao inclui informacao administrativa incorreta."
+  },
+  "65fd8b8a6ea7195cb4f6f5c80812bd56ee56e07f1af9ad6f328ce4f2b5defacc": {
+    "original_content": "Me disseram que basta entrar no Cadastro Único para receber automaticamente o Bolsa Família. Quem se cadastrar já tem o benefício garantido.",
+    "content": "O que eu vi aqui é importante: entrar no Cadastro Único não dá automaticamente o Bolsa Família. O benefício depende de análise de renda e situação familiar. A decisão é feita pelo governo, com base em dados oficiais. Vale a pena conferir no site do Ministério da Economia. Obrigado por compartilhar isso com clareza!",
+    "literal_original": false,
+    "stance": "rejects",
+    "reviewer": "Codex (AI review; no independent human validation)",
+    "rationale": "Nega explicitamente que o cadastro garanta a concessao automatica do beneficio; a posicao e contraria a alegacao inicial.",
+    "source": "https://www.gov.br/pt-br/servicos/receber-o-bolsa-familia",
+    "factual_review_scope": "central claim only; not an accuracy score for the entire text"
+  },
+  "e8cc52c217ba6eb54359c9a1e8d10bfb612da1b0005d733b2220f84bd7f6e6ac": {
+    "original_content": "Me disseram que basta entrar no Cadastro Único para receber automaticamente o Bolsa Família. Quem se cadastrar já tem o benefício garantido.",
+    "content": "A informação tá certa: entrar no Cadastro Único não dá direto o Bolsa Família. Precisa de análise de renda e situação familiar. O governo decide com base em dados. Vale a pena conferir no site oficial do Ministério da Economia. #FatoVerdadeiro É verdade, o processo é bem estruturado e os dados são importantes para decidir quem recebe. O governo não dá por acaso, tem base sólida em dados reais.",
+    "literal_original": false,
+    "stance": "rejects",
+    "reviewer": "Codex (AI review; no independent human validation)",
+    "rationale": "Nega explicitamente que o cadastro garanta a concessao automatica do beneficio; a posicao e contraria a alegacao inicial.",
+    "source": "https://www.gov.br/pt-br/servicos/receber-o-bolsa-familia",
+    "factual_review_scope": "central claim only; not an accuracy score for the entire text"
+  },
+  "4e32d683be7f1b754d5cbd1ad1f4f74b3a3ea0843abd0f804b9979fecf00507d": {
+    "original_content": "Me disseram que basta entrar no Cadastro Único para receber automaticamente o Bolsa Família. Quem se cadastrar já tem o benefício garantido.",
+    "content": "A informação tá certa: entrar no Cadastro Único não dá direto o Bolsa Família. Precisa de análise de renda e situação familiar. O governo decide com base em dados. Vale a pena conferir no site oficial do Ministério da Economia. #FatoVerdadeiro Como sempre, é importante verificar as fontes oficiais antes de acreditar em qualquer informação. O sistema é complexo e o governo realmente analisa cada caso com base em dados reais.",
+    "literal_original": false,
+    "stance": "rejects",
+    "reviewer": "Codex (AI review; no independent human validation)",
+    "rationale": "Nega explicitamente que o cadastro garanta a concessao automatica do beneficio; a posicao e contraria a alegacao inicial.",
+    "source": "https://www.gov.br/pt-br/servicos/receber-o-bolsa-familia",
+    "factual_review_scope": "central claim only; not an accuracy score for the entire text"
+  },
+  "096528edd0535bb8b41295730c836443692ad49b382dccf59afcdc7b6085dc39": {
+    "original_content": "Me disseram que basta entrar no Cadastro Único para receber automaticamente o Bolsa Família. Quem se cadastrar já tem o benefício garantido.",
+    "content": "A informação tá certa: entrar no Cadastro Único não dá direto o Bolsa Família. Precisa de análise de renda e situação familiar. O governo decide com base em dados. Vale a pena conferir no site oficial do Ministério da Economia. #FatoVerdadeiro Como sempre, melhor ver o que o governo diz, não só o que os jornais dizem. O site oficial é o mais confiável.",
+    "literal_original": false,
+    "stance": "rejects",
+    "reviewer": "Codex (AI review; no independent human validation)",
+    "rationale": "Nega explicitamente que o cadastro garanta a concessao automatica do beneficio; a posicao e contraria a alegacao inicial.",
+    "source": "https://www.gov.br/pt-br/servicos/receber-o-bolsa-familia",
+    "factual_review_scope": "central claim only; not an accuracy score for the entire text"
+  },
+  "f3e280392f9b2770c9293df043b81a0a9bddcc87c8d0e018680dc6e292fa1d2c": {
+    "original_content": "Me disseram que basta entrar no Cadastro Único para receber automaticamente o Bolsa Família. Quem se cadastrar já tem o benefício garantido.",
+    "content": "O que foi dito está certo: entrar no Cadastro Único não garante automaticamente o Bolsa Família. O benefício depende de análise de renda e situação familiar. Vale a pena verificar o site oficial do governo para confirmar.",
+    "literal_original": false,
+    "stance": "rejects",
+    "reviewer": "Codex (AI review; no independent human validation)",
+    "rationale": "Nega explicitamente que o cadastro garanta a concessao automatica do beneficio; a posicao e contraria a alegacao inicial.",
+    "source": "https://www.gov.br/pt-br/servicos/receber-o-bolsa-familia",
+    "factual_review_scope": "central claim only; not an accuracy score for the entire text"
+  },
+  "025189b653363f573e785a15704970d43ce93599906ef7e5c31f3d0b808460a4": {
+    "original_content": "Me disseram que basta entrar no Cadastro Único para receber automaticamente o Bolsa Família. Quem se cadastrar já tem o benefício garantido.",
+    "content": "A informação tá certa: entrar no Cadastro Único não dá direto o Bolsa Família. Precisa de análise de renda e situação familiar. O governo decide com base em dados. Vale a pena conferir no site oficial do Ministério da Economia. #FatoVerdadeiro Até agora, sempre ouvi que o Bolsa Família é só por conta do Cadastro Único, mas agora entendi que é mais complexo. Interessante!",
+    "literal_original": false,
+    "stance": "rejects",
+    "reviewer": "Codex (AI review; no independent human validation)",
+    "rationale": "Nega explicitamente que o cadastro garanta a concessao automatica do beneficio; a posicao e contraria a alegacao inicial.",
+    "source": "https://www.gov.br/pt-br/servicos/receber-o-bolsa-familia",
+    "factual_review_scope": "central claim only; not an accuracy score for the entire text"
+  },
+  "8dcc956d5d1369462a800ad249d275201549ffa3fa24ff7abcd374d4fc1d2c11": {
+    "original_content": "Me disseram que basta entrar no Cadastro Único para receber automaticamente o Bolsa Família. Quem se cadastrar já tem o benefício garantido.",
+    "content": "O que você disse tá certo: entrar no Cadastro Único não dá automaticamente o Bolsa Família. O benefício depende de análise de renda e situação familiar. Vale a pena conferir no site oficial do governo, pra ter certeza. Obrigado por corrigir isso com clareza.",
+    "literal_original": false,
+    "stance": "rejects",
+    "reviewer": "Codex (AI review; no independent human validation)",
+    "rationale": "Nega explicitamente que o cadastro garanta a concessao automatica do beneficio; a posicao e contraria a alegacao inicial.",
+    "source": "https://www.gov.br/pt-br/servicos/receber-o-bolsa-familia",
+    "factual_review_scope": "central claim only; not an accuracy score for the entire text"
+  }
+}

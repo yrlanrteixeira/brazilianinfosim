@@ -10,6 +10,7 @@ import platform
 import tempfile
 from datetime import datetime, timezone
 from uuid import uuid4
+from zipfile import ZipFile, ZIP_DEFLATED
 
 
 def campaign_directory(name: str) -> Path:
@@ -52,6 +53,22 @@ def atomic_json(path: Path, payload: dict) -> None:
     finally:
         if os.path.exists(temporary):
             os.unlink(temporary)
+
+
+def archive_source(directory: Path, expected_sha256: str) -> None:
+    """Preserva os bytes do código medido, inclusive alterações locais."""
+    root = Path(__file__).resolve().parents[2]
+    files = sorted([*root.glob("src/**/*.py"), *root.glob("run_*.py"), root / "requirements.txt"])
+    contents = [(path.relative_to(root).as_posix(), path.read_bytes()) for path in files]
+    digest = sha256()
+    for name, raw in contents:
+        digest.update(name.encode())
+        digest.update(raw)
+    if digest.hexdigest() != expected_sha256:
+        raise ValueError("Código mudou durante a criação da campanha.")
+    with ZipFile(directory / "source_snapshot.zip", "x", compression=ZIP_DEFLATED) as archive:
+        for name, raw in contents:
+            archive.writestr(name, raw)
 
 
 def save_result(result, directory: Path, label: str) -> None:

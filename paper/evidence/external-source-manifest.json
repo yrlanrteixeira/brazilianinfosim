@@ -1,0 +1,22 @@
+{
+  "url": "https://zenodo.org/records/3779157/files/icwsm_dataset_share.zip?download=1",
+  "doi": "10.5281/zenodo.3779157",
+  "archive_bytes": 302506953,
+  "verification": "CRC32 de cada membro pelo ZipFile e SHA256 do conteúdo; ZIP completo não baixado",
+  "files": [
+    {
+      "member": "icwsm_dataset_share/brazil/misinfo_anonymized.txt",
+      "file": "misinfo_anonymized.txt",
+      "bytes": 100863,
+      "sha256": "1c9ba663af76bfcbbc83eca3527ec75f99005c6f5013783f12106c18b1877b07",
+      "zip_crc32": 4251539176
+    },
+    {
+      "member": "icwsm_dataset_share/brazil/README.txt",
+      "file": "README.txt",
+      "bytes": 1155,
+      "sha256": "35b90ae1a61287782b9858272956c731f51883889f27c6c19dfb2157a7aaaa11",
+      "zip_crc32": 3808760876
+    }
+  ]
+}

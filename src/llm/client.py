@@ -487,6 +487,7 @@ class LLMClient:
                 raise ValueError("mutação e refutação exigem conteúdo")
             if label != decision.value:
                 self._normalized_labels += 1
+            self.audit_log[-1].update(decision=decision.value, content=content, refused=False)
             self._add_to_cache(
                 prompt, {"decision": decision.value, "content": content, "refused": False}
             )
@@ -497,6 +498,7 @@ class LLMClient:
             # veio JSON e o texto casa com um marcador de recusa, foi guardrail.
             if not parsed_json and isinstance(raw, str) and is_refusal(raw):
                 self._refusals += 1
+                self.audit_log[-1].update(decision=Decision.IGNORE.value, content="", refused=True)
                 logger.info(
                     f"Recusa do modelo detectada ({self._refusals} total). "
                     f"Registrada como IGNORAR, mas contabilizada à parte."

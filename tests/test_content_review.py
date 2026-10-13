@@ -138,6 +138,15 @@ def test_paired_effect_requires_complete_review_of_both_cases():
     assert paired_content_effects(records, reports)[0]["supports_difference_pp"] == -60
 
 
+def test_research_reference_is_used_when_both_arms_have_no_intervention():
+    records = [{"id": key, "reference_id": "control", "block": "b", "status": "success",
+                "summary": {"intervention": "none"}} for key in ("control", "mutation_disabled")]
+    reports = {key: {"classification_complete": True, "stance_reach_pct": {"supports": value}}
+               for key, value in (("control", 40), ("mutation_disabled", 20))}
+    pairs = paired_content_effects(records, reports)
+    assert len(pairs) == 1 and pairs[0]["supports_difference_pp"] == -20
+
+
 def test_review_export_preserves_source_and_existing_annotations(payload, tmp_path):
     source = tmp_path / "run.json"
     source.write_text(json.dumps(payload), encoding="utf-8")
