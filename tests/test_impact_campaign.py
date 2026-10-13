@@ -24,6 +24,19 @@ def test_design_has_unique_controls_and_complete_treatment_grid():
         assert len({(c.network_seed, c.profile_seed, c.activation_seed, c.llm_seed) for c in configs}) == 1
 
 
+def test_queue_completes_all_timings_before_starting_the_next_block():
+    cases = run_impact.design()
+    first = cases[:13]
+    assert len({case["block"] for case in first}) == 1
+    assert first[0]["config"].intervention is None
+    assert {case["config"].intervention_tick for case in first} == {0, 1, 3, 10}
+    assert cases[13]["config"].intervention is None
+    assert {case["replicate"] for case in cases[:26]} == {0, 1}
+    assert len({(case["config"].network_seed, case["config"].profile_seed,
+                 case["config"].topology, case["subject"]) for case in cases[:26]}) == 1
+    assert [case["id"] for case in cases] == [case["id"] for case in run_impact.design()]
+
+
 @pytest.fixture
 def fake_campaign(monkeypatch):
     class FakeModel:

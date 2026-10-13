@@ -36,13 +36,14 @@ class ReplayModel(mesa.Model):
         self.snapshots: list[dict] = data["ticks"]
         self.index = 0
 
-        self.G: nx.Graph = build_network(
+        self._initial_graph: nx.Graph = build_network(
             topology=Topology(self.meta["topology"]),
             n_agents=self.meta["n_agents"],
             seed=self.meta.get("network_seed", self.meta["seed"]),
         )
         # Layout fixo: recalcular a cada tick faz o grafo pular na tela.
-        self.pos = nx.spring_layout(self.G, seed=self.meta["seed"])
+        self.pos = nx.spring_layout(self._initial_graph, seed=self.meta["seed"])
+        self._sync_graph()
 
         self.datacollector = mesa.DataCollector(model_reporters={
             "reach_pct": lambda m: m.current["reached"] / m.meta["n_agents"] * 100,
@@ -63,6 +64,10 @@ class ReplayModel(mesa.Model):
     def total_ticks(self) -> int:
         return len(self.snapshots)
 
+    def _sync_graph(self) -> None:
+        active_nodes = [int(node) for node in self.current["agents"]]
+        self.G = self._initial_graph.subgraph(active_nodes).copy()
+
     def node_state(self, node_id: int) -> NodeState:
         agent = self.current["agents"][str(node_id)]
         if agent["agent_type"] == "fact_checker":
@@ -79,4 +84,5 @@ class ReplayModel(mesa.Model):
             self.running = False
             return
         self.index += 1
+        self._sync_graph()
         self.datacollector.collect(self)

@@ -10,8 +10,8 @@ import random
 
 class Topology(str, Enum):
     RANDOM       = "erdos_renyi"       # linha de base
-    SCALE_FREE   = "barabasi_albert"   # Twitter/Instagram
-    SMALL_WORLD  = "watts_strogatz"    # WhatsApp (grupos familiares)
+    SCALE_FREE   = "barabasi_albert"   # conexão preferencial
+    SMALL_WORLD  = "watts_strogatz"    # vizinhança local com reconexão
 
 
 def build_network(

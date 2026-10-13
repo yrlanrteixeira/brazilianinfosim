@@ -77,6 +77,7 @@ class InfoSimModel(mesa.Model):
         self.config = config
         self.rng = random.Random(config.seed)
         self.tick = 0   # contador próprio de ticks (Mesa 3.x removeu schedule.time)
+        self.message_audit: list[dict] = []
 
         # Constrói rede
         self.G: nx.Graph = build_network(
@@ -323,6 +324,7 @@ class InfoSimModel(mesa.Model):
             intervention_nodes=list(self.intervention_nodes),
             initial_state=self.initial_state,
             decision_audit=list(getattr(self.llm, "audit_log", [])),
+            message_audit=list(self.message_audit),
         )
 
 
@@ -348,3 +350,4 @@ class SimulationResult:
     intervention_nodes: list[int] = field(default_factory=list)
     initial_state: dict = field(default_factory=dict)
     decision_audit: list[dict] = field(default_factory=list)
+    message_audit: list[dict] = field(default_factory=list)

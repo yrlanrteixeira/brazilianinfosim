@@ -46,6 +46,10 @@ def run_single(args) -> None:
         llm_provider=args.provider,
         llm_model=args.model,
     )
+    output_dir = campaign_directory("single")
+    label = f"sim_{config.topology.value}_{config.seed}_{config.intervention or 'none'}_t{config.intervention_tick}"
+    if args.record:
+        config.record_path = str(Path("data/outputs/recordings") / f"{output_dir.name}_{label}.json")
 
     print(f"\n{'='*60}")
     print(f"  BrazilianInfoSim")
@@ -57,8 +61,6 @@ def run_single(args) -> None:
     model = InfoSimModel(config)
     result = model.run()
 
-    output_dir = campaign_directory("single")
-    label = f"sim_{config.topology.value}_{config.seed}_{config.intervention or 'none'}_t{config.intervention_tick}"
     save_result(result, output_dir, label)
 
     summary = summarize_result(result)
@@ -113,10 +115,14 @@ def run_all(args) -> None:
                         intervention_tick=args.intervention_tick, cache_mode=args.cache_mode,
                         llm_provider=args.provider, llm_model=args.model,
                     )
+                    label = f"{topology.value}_{intervention or 'none'}_{msg_name}_{seed}"
+                    if args.record:
+                        config.record_path = str(
+                            Path("data/outputs/recordings") / f"{output_dir.name}_{label}.json"
+                        )
                     model = InfoSimModel(config)
                     result = model.run()
-                    save_result(result, output_dir / "runs",
-                                f"{topology.value}_{intervention or 'none'}_{msg_name}_{seed}")
+                    save_result(result, output_dir / "runs", label)
                     results.append(result)
 
     # Tabela comparativa
@@ -148,6 +154,8 @@ def main():
     parser.add_argument("--model",       type=str,  default=None,
                         help="Modelo LLM (default: env LLM_MODEL ou default do provider)")
     parser.add_argument("--all",         action="store_true",            help="Roda matriz experimental completa")
+    parser.add_argument("--record", action="store_true",
+                        help="Salva cada execução em data/outputs/recordings para replay")
     args = parser.parse_args()
 
     # Só exige a chave da Anthropic quando o provider efetivo for "anthropic".

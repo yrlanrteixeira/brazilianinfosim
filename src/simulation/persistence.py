@@ -34,7 +34,7 @@ def manifest(settings: dict) -> dict:
             packages[package] = version(package)
         except PackageNotFoundError:
             packages[package] = None
-    return {"schema_version": 2, "source_sha256": digest.hexdigest(),
+    return {"schema_version": 3, "source_sha256": digest.hexdigest(),
             "python": platform.python_version(), "packages": packages,
             "provider": provider, "model": model, "model_digest": None,
             "llm_seed": settings.get("llm_seed"), "settings": settings}
@@ -67,5 +67,12 @@ def save_result(result, directory: Path, label: str) -> None:
         "mutations": result.mutations,
         "initial_state": result.initial_state,
         "decision_audit": result.decision_audit,
+        "message_audit": result.message_audit,
+        "metric_semantics": {
+            "final_reach_pct": "rumor_lineage_exposure",
+            "final_correction_reach_pct": "refutation_lineage_exposure",
+            "final_believers": "action_derived_state_above_0.5",
+            "content_stance": "requires_separate_annotation",
+        },
     }
     atomic_json(directory / f"{label}.json", payload)

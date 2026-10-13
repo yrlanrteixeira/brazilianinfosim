@@ -130,6 +130,7 @@ class InfoAgent(mesa.Agent):
         self._tick_seen.add(key)
         self.seen_rumors.add(key)
         self.inbox.append(message)
+        self._audit_message("received", message)
 
     def step(self) -> None:
         """Executado a cada tick pelo Mesa."""
@@ -189,7 +190,7 @@ class InfoAgent(mesa.Agent):
         self.belief_level = min(1.0, max(0.0, self.belief_level + direction * changes[decision]))
 
         if decision == Decision.REFUTE:
-            # Contestar uma correção volta a apoiar a linhagem do boato.
+            # Alternância operacional de linhagem; não classifica o sentido do texto.
             refutation = Message(
                 content=new_content if message.is_refutation else f"[REFUTAÇÃO] {new_content}",
                 original_content=message.original_content,
@@ -217,8 +218,18 @@ class InfoAgent(mesa.Agent):
         # Nós removidos por remove_hubs saem do grafo; evita NetworkXError.
         if self.node_id not in self.model.G:
             return
+        self._audit_message("sent", message)
         neighbors = list(self.model.G.neighbors(self.node_id))
         for neighbor_id in neighbors:
             neighbor = self.model.agents_by_id.get(neighbor_id)
             if neighbor:
                 neighbor.receive(message)
+
+    def _audit_message(self, event: str, message: Message) -> None:
+        self.model.message_audit.append({
+            "event": event, "node_id": self.node_id, "tick": self.model.tick,
+            "content": message.content, "original_content": message.original_content,
+            "parent_content": message.parent_content, "sender_id": message.sender_id,
+            "hops": message.hops, "is_refutation": message.is_refutation,
+            "parent_is_refutation": message.parent_is_refutation,
+        })

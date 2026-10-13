@@ -25,8 +25,8 @@ RECORDINGS_DIR = Path("data/outputs/recordings")
 STATE_STYLE = {
     NodeState.SEED:        ("#7C3AED", "Semeado"),
     NodeState.UNREACHED:   ("#D5DAE6", "Não alcançado"),
-    NodeState.REACHED:     ("#F4A261", "Recebeu, não acredita"),
-    NodeState.BELIEVER:    ("#E63946", "Acredita"),
+    NodeState.REACHED:     ("#F4A261", "Exposto; estado ≤ 0,5"),
+    NodeState.BELIEVER:    ("#E63946", "Exposto; estado > 0,5"),
     NodeState.FACTCHECKER: ("#2A9D8F", "Fact-checker"),
 }
 
@@ -65,8 +65,8 @@ def NetworkPanel(model):
     snapshot = model.current
     ax.set_title(
         f"Tick {model.tick} de {model.total_ticks - 1}  |  "
-        f"alcance {snapshot['reached']}/{model.meta['n_agents']}  |  "
-        f"acreditam {snapshot['believers']}",
+        f"linhagem do boato {snapshot['reached']}/{model.meta['n_agents']}  |  "
+        f"estado > 0,5: {snapshot['believers']}",
         fontsize=11,
     )
     for state, (color, label) in STATE_STYLE.items():
@@ -97,6 +97,9 @@ def RunInfo(model):
 | Chamadas ao LLM | {model.current.get('api_calls')} |
 | Recusas | {model.current.get('refusals')} |
 
+O alcance acompanha a linhagem operacional. O estado numérico deriva das ações;
+nenhum dos dois comprova apoio textual ou crença humana.
+
 > {meta.get('initial_message', '')}
 """
         )
@@ -109,7 +112,7 @@ if not _recordings:
     def Page():
         solara.Error(
             f"Nenhuma gravação em {RECORDINGS_DIR}/. "
-            "Rode uma campanha com --record antes de abrir o replay."
+            "Execute python run_simulation.py --record antes de abrir o replay."
         )
 else:
     model = ReplayModel(_recordings[0])

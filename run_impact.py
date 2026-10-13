@@ -32,10 +32,12 @@ from simulation.persistence import atomic_json, manifest, save_result
 
 def design(n_seeds=20, repeats=2, n_agents=50, ticks=30, pilot=False):
     """Controle único por bloco; tratamentos pareados em quatro momentos."""
-    blocks = [(topology, subject, seed, repetition)
-              for seed in range(n_seeds) for repetition in range(repeats)
-              for topology in Topology for subject in SUBJECTS]
-    random.Random(90823).shuffle(blocks)
+    configurations = [(topology, subject, seed)
+                      for seed in range(n_seeds)
+                      for topology in Topology for subject in SUBJECTS]
+    random.Random(90823).shuffle(configurations)
+    blocks = [(*configuration, repetition)
+              for configuration in configurations for repetition in range(repeats)]
     if pilot:
         blocks = [(Topology.SCALE_FREE, next(iter(SUBJECTS)), 0, 0)]
     cases = []
@@ -59,9 +61,8 @@ def design(n_seeds=20, repeats=2, n_agents=50, ticks=30, pilot=False):
             key = sha256(json.dumps(asdict(cfg), sort_keys=True).encode()).hexdigest()[:20]
             cases.append({"id": key, "block": block, "subject": subject,
                           "replicate": repetition, "config": cfg})
-    # A primeira passagem garante pares preventivos em várias redes antes
-    # de dedicar o restante do orçamento aos tratamentos tardios.
-    return sorted(cases, key=lambda case: case["config"].intervention_tick)
+    # Cada bloco cobre todos os momentos; as réplicas de LLM vêm em seguida.
+    return cases
 
 
 def local_model_metadata():
@@ -166,6 +167,7 @@ def run(cases, directory, hours, resume=False, metadata=None):
             record.update(status="interrupted" if expired else "failed",
                           error=type(error).__name__, detail=str(error),
                           decision_audit=getattr(getattr(model, "llm", None), "audit_log", []),
+                          message_audit=getattr(model, "message_audit", []),
                           llm_stats=getattr(getattr(model, "llm", None), "stats", {}))
             failures += 1
             if expired:

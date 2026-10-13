@@ -120,3 +120,23 @@ def test_recording_preserves_exposure_after_removing_the_emitter(tmp_path, monke
     recording = json.loads(target.read_text(encoding="utf-8"))
     assert model.seed_node in model.removed_nodes
     assert [tick["reached"] for tick in recording["ticks"]] == result.model_data.reached_count.tolist()
+
+
+def test_replay_removes_nodes_and_edges_without_losing_historical_reach(tmp_path, monkeypatch):
+    monkeypatch.setattr("simulation.engine.LLMClient", lambda **_: FakeLLM())
+    target = tmp_path / "removed-hubs.json"
+    model = InfoSimModel(SimulationConfig(
+        n_agents=12, max_ticks=1, intervention="remove_hubs",
+        intervention_tick=0, record_path=str(target),
+    ))
+    result = model.run()
+    replay = ReplayModel(str(target))
+    initial_positions = dict(replay.pos)
+    assert len(replay.G) == 12
+    replay.step()
+    assert set(replay.G) == set(model.G)
+    assert set(replay.G.edges()) == set(model.G.edges())
+    assert all(replay.node_state(node) for node in replay.G)
+    assert replay.current["reached"] == result.model_data.iloc[-1].reached_count
+    assert replay.pos == initial_positions
+    assert len(ReplayModel(str(target)).G) == 12
