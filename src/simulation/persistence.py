@@ -20,7 +20,7 @@ def campaign_directory(name: str) -> Path:
 
 def manifest(settings: dict) -> dict:
     root = Path(__file__).resolve().parents[2]
-    files = sorted([*root.glob("src/**/*.py"), *root.glob("run_*.py"), root / "requirements.txt"])
+    files = sorted([*root.glob("src/**/*.py"), *root.glob("scripts/**/*.py"), root / "requirements.txt"])
     digest = sha256()
     for path in files:
         digest.update(path.relative_to(root).as_posix().encode())
@@ -58,7 +58,7 @@ def atomic_json(path: Path, payload: dict) -> None:
 def archive_source(directory: Path, expected_sha256: str) -> None:
     """Preserva os bytes do código medido, inclusive alterações locais."""
     root = Path(__file__).resolve().parents[2]
-    files = sorted([*root.glob("src/**/*.py"), *root.glob("run_*.py"), root / "requirements.txt"])
+    files = sorted([*root.glob("src/**/*.py"), *root.glob("scripts/**/*.py"), root / "requirements.txt"])
     contents = [(path.relative_to(root).as_posix(), path.read_bytes()) for path in files]
     digest = sha256()
     for name, raw in contents:

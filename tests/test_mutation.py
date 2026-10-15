@@ -154,7 +154,7 @@ def test_mutation_index_per_subject_uses_only_that_subset():
 
 def test_subject_filter_ignores_accents():
     """O guia de setup usa `--subjects saude`, sem acento."""
-    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts" / "legacy"))
     from run_mutation import filter_subjects
 
     assert list(filter_subjects(SUBJECTS, "saude")) == ["Saúde/vacinas"]
@@ -167,7 +167,7 @@ def test_subject_filter_ignores_accents():
 
 def test_load_raw_merges_several_csvs(tmp_path):
     """A campanha roda por assunto: a agregação junta os pedaços."""
-    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts" / "legacy"))
     from run_mutation import load_raw
 
     for name, subject in [("a", "Saúde/vacinas"), ("b", "Economia/benefícios")]:
@@ -183,7 +183,7 @@ def test_load_raw_merges_several_csvs(tmp_path):
 
 
 def test_load_raw_without_files_fails_loudly(tmp_path):
-    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts" / "legacy"))
     from run_mutation import load_raw
 
     with pytest.raises(SystemExit):

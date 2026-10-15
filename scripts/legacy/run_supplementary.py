@@ -8,7 +8,7 @@ no tick ~3. Aqui comparamos, nos cenarios que ignem, intervencao precoce
 """
 import sys
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
 from simulation.engine import SimulationConfig, InfoSimModel
 from network.topology import Topology

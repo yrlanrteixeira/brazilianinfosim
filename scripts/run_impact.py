@@ -1,8 +1,8 @@
 """Campanha de intervenções com orçamento de tempo, auditoria e retomada.
 
-python run_impact.py --hours 8 --output data/outputs/tcc2/impacto
-python run_impact.py --output data/outputs/tcc2/impacto --resume
-python run_impact.py --dry-run
+python scripts/run_impact.py --hours 8 --output data/outputs/tcc2/impacto
+python scripts/run_impact.py --output data/outputs/tcc2/impacto --resume
+python scripts/run_impact.py --dry-run
 """
 
 import argparse
@@ -22,7 +22,7 @@ from dotenv import load_dotenv
 import pandas as pd
 from loguru import logger
 
-sys.path.insert(0, str(Path(__file__).parent / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from llm.client import BackendUnavailable, ComputeBudgetExceeded, InvalidLLMResponse
 from metrics.analysis import summarize_result
 from network.topology import Topology, network_stats

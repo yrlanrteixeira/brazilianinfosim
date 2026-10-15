@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 import sys
 
-sys.path.insert(0, str(Path(__file__).parent / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from metrics.content_review import paired_content_effects, review_exposure, update_review_template
 from simulation.persistence import atomic_json

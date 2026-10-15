@@ -3,10 +3,10 @@ run_simulation.py
 Ponto de entrada principal do BrazilianInfoSim.
 
 Uso:
-    python run_simulation.py                         # configuração padrão
-    python run_simulation.py --topology scale_free   # topologia específica
-    python run_simulation.py --agents 100 --ticks 50 # tamanho customizado
-    python run_simulation.py --all                   # roda matriz completa
+    python scripts/run_simulation.py                         # configuração padrão
+    python scripts/run_simulation.py --topology scale_free   # topologia específica
+    python scripts/run_simulation.py --agents 100 --ticks 50 # tamanho customizado
+    python scripts/run_simulation.py --all                   # roda matriz completa
 """
 
 import argparse
@@ -19,7 +19,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Adiciona src ao path
-sys.path.insert(0, str(Path(__file__).parent / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from simulation.engine import SimulationConfig, InfoSimModel
 from network.topology import Topology

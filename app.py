@@ -112,7 +112,7 @@ if not _recordings:
     def Page():
         solara.Error(
             f"Nenhuma gravação em {RECORDINGS_DIR}/. "
-            "Execute python run_simulation.py --record antes de abrir o replay."
+            "Execute python scripts/run_simulation.py --record antes de abrir o replay."
         )
 else:
     model = ReplayModel(_recordings[0])

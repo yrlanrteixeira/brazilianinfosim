@@ -20,19 +20,31 @@ brazilianinfosim/
 │   ├── llm/
 │   │   └── client.py         # Cliente multi-provider (Ollama/Anthropic) com cache semântico
 │   ├── simulation/
-│   │   └── engine.py         # Motor de simulação (Mesa)
+│   │   ├── engine.py         # Motor de simulação (Mesa)
+│   │   ├── messages.py       # Mensagens iniciais das campanhas
+│   │   ├── research_messages.py  # Estímulos da campanha de pesquisa
+│   │   ├── baseline.py       # Referências SIR e SEIR
+│   │   ├── persistence.py    # Proveniência e gravação atômica
+│   │   └── recorder.py, replay.py  # Gravação e replay de execuções
 │   └── metrics/
-│       └── analysis.py       # Métricas e visualizações
-├── tests/
-│   ├── test_profiles.py      # Testes unitários dos agentes
-│   └── test_network.py       # Testes das topologias
-├── data/
-│   ├── inputs/               # Mensagens e configurações de experimento
-│   └── outputs/              # Resultados, gráficos e CSVs
-├── run_simulation.py         # Ponto de entrada principal
+│       ├── analysis.py       # Métricas e visualizações
+│       └── content_review.py # Medição por conteúdo
+├── scripts/
+│   ├── run_simulation.py     # Simulação única ou matriz completa
+│   ├── run_impact.py         # Campanha de intervenções com orçamento de tempo
+│   ├── run_research.py       # Campanha de pesquisa com contrastes pareados
+│   ├── run_content_review.py # Revisão por conteúdo de uma campanha
+│   └── legacy/               # Runners das campanhas históricas (expandida, assuntos, suplementar, mutação)
+├── analysis/                 # Análise da campanha de pesquisa e referência externa
+├── tests/                    # Suíte pytest, sem chamadas reais a LLM
+├── data/outputs/             # Resultados, gravações e CSVs (fora do git)
+├── app.py                    # Replay visual (solara run app.py)
 ├── requirements.txt
 └── .env.example
 ```
+
+Os comandos abaixo partem da raiz do repositório, porque as saídas são gravadas
+em `data/outputs/` relativo à pasta atual.
 
 ---
 
@@ -79,25 +91,25 @@ ollama pull llama3.1:8b
 ### Simulação única
 ```bash
 # Configuração padrão (scale_free, 50 agentes)
-python run_simulation.py
+python scripts/run_simulation.py
 
 # Topologia específica com intervenção
-python run_simulation.py --topology small_world --intervention factcheckers_hub
+python scripts/run_simulation.py --topology small_world --intervention factcheckers_hub
 
 # Mais agentes, menos ticks
-python run_simulation.py --agents 100 --ticks 50 --topology random
+python scripts/run_simulation.py --agents 100 --ticks 50 --topology random
 ```
 
 ### Matriz experimental completa (PC4)
 ```bash
-python run_simulation.py --all
+python scripts/run_simulation.py --all
 # Salva os 36 cenários em uma nova pasta data/outputs/tcc2/matrix_<id>/
 ```
 
 ### Replay visual
 
 ```bash
-python run_simulation.py --record --intervention remove_hubs --intervention-tick 1
+python scripts/run_simulation.py --record --intervention remove_hubs --intervention-tick 1
 pip install -r requirements-viz.txt
 solara run app.py
 ```
@@ -138,10 +150,10 @@ declarar esse fator.
 ## Campanha com orçamento de tempo
 
 ```bash
-python run_impact.py --dry-run
-python run_impact.py --pilot --agents 20 --ticks 3 --hours 0.1 --output data/outputs/tcc2/piloto
-python run_impact.py --hours 16 --output data/outputs/tcc2/nova_campanha
-python run_impact.py --output data/outputs/tcc2/nova_campanha --resume
+python scripts/run_impact.py --dry-run
+python scripts/run_impact.py --pilot --agents 20 --ticks 3 --hours 0.1 --output data/outputs/tcc2/piloto
+python scripts/run_impact.py --hours 16 --output data/outputs/tcc2/nova_campanha
+python scripts/run_impact.py --output data/outputs/tcc2/nova_campanha --resume
 ```
 
 A grade padrão tem 6.240 casos possíveis, com Ollama local e `llama3.1:8b`.
@@ -205,9 +217,9 @@ publicação. Tentativas interrompidas preservam os eventos disponíveis, mas
 permanecem fora dos resultados completos.
 
 ```bash
-python run_content_review.py data/outputs/tcc2/nova_campanha --output data/outputs/tcc2/revisao
+python scripts/run_content_review.py data/outputs/tcc2/nova_campanha --output data/outputs/tcc2/revisao
 # Preencha stance, reviewer e rationale em revisao/review_template.json.
-python run_content_review.py data/outputs/tcc2/nova_campanha --annotations data/outputs/tcc2/revisao/review_template.json --output data/outputs/tcc2/revisao
+python scripts/run_content_review.py data/outputs/tcc2/nova_campanha --annotations data/outputs/tcc2/revisao/review_template.json --output data/outputs/tcc2/revisao
 ```
 
 A entrada também pode ser um JSON de resultado ou uma pasta de resultados.
@@ -243,9 +255,9 @@ quatro redações de duas alegações, duas sementes de LLM e 22 condições por
 Ao contrário do `run_impact.py`, cada sessão tem orçamento próprio.
 
 ```bash
-python run_research.py --output data/outputs/tcc2/conclusao --dry-run
-python run_research.py --output data/outputs/tcc2/conclusao --hours 6
-python run_research.py --output data/outputs/tcc2/conclusao --hours 6 --resume --retry-incomplete
+python scripts/run_research.py --output data/outputs/tcc2/conclusao --dry-run
+python scripts/run_research.py --output data/outputs/tcc2/conclusao --hours 6
+python scripts/run_research.py --output data/outputs/tcc2/conclusao --hours 6 --resume --retry-incomplete
 ```
 
 Execuções completas não são repetidas. Falhas e interrupções só são retentadas
