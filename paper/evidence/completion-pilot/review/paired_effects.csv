@@ -1,4 +1,0 @@
-id,reference_id,family,condition,seed_index,reference_topology,treated_topology,delta_literal_reach_pct,delta_supports_reach_pct,delta_ticks_observed,delta_published_changes
-46b9371b33f0b119afbd,cdaebb172ba0bdda428d,emitter,fact_checker,0,erdos_renyi,erdos_renyi,0.0,0.0,2,10
-e56d49b4086f26e42708,cdaebb172ba0bdda428d,mutation,literal_forwarding,0,erdos_renyi,erdos_renyi,0.0,0.0,0,0
-e6cf768099900bcfe762,cdaebb172ba0bdda428d,intervention,limit_forwarding_t0,0,erdos_renyi,erdos_renyi,0.0,0.0,0,0

@@ -2,8 +2,8 @@ from pathlib import Path
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from paper.analyze_completion import cluster_summary, run_metrics
-from paper.benchmark_external import cascade_features, distribution_distance, empirical_features
+from analysis.analyze_completion import cluster_summary, run_metrics
+from analysis.benchmark_external import cascade_features, distribution_distance, empirical_features
 
 
 def test_normalized_times_preserve_singletons_as_undefined():

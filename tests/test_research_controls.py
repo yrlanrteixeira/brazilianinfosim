@@ -137,7 +137,7 @@ def test_invalid_controls_are_rejected(kwargs):
 
 def test_research_pipeline_saves_auditable_data_without_real_llm(tmp_path, monkeypatch):
     import llm.client as client
-    from paper.analyze_completion import analyze
+    from analysis.analyze_completion import analyze
 
     class Provider:
         name = "ollama"

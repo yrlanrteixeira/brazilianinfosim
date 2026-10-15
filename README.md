@@ -235,15 +235,32 @@ comando. Eles precisam de reprodução validada, com o código e as respostas
 originais, antes de receberem uma nova medição. Instrumentação e testes
 controlados não constituem novas amostras experimentais.
 
-## Texto do TCC
+## Campanha de pesquisa
 
-A revisão acadêmica fica em [paper/README.md](paper/README.md), com o texto
-editável de substituição, as equações, as hipóteses de simulação e a delimitação
-dos resultados históricos. Os documentos não apresentam os testes desta branch
-como campanhas realizadas com LLM.
+O `run_research.py` prepara contrastes pareados de rede, perfis, ceticismo,
+mutação e intervenções. A grade padrão tem 2.112 casos: 12 sementes de cenário,
+quatro redações de duas alegações, duas sementes de LLM e 22 condições por bloco.
+Ao contrário do `run_impact.py`, cada sessão tem orçamento próprio.
 
-A conclusão das cinco questões segue o [roteiro de execução](paper/roteiro-execucao.md)
-e o [protocolo experimental](paper/protocolo-conclusao.md). O `run_research.py`
-prepara contrastes de rede, perfis, ceticismo, mutação e intervenções, com
-retomada por sessão. O piloto diagnóstico e a referência brasileira estão
-documentados separadamente da campanha principal, prevista para execução pelo autor.
+```bash
+python run_research.py --output data/outputs/tcc2/conclusao --dry-run
+python run_research.py --output data/outputs/tcc2/conclusao --hours 6
+python run_research.py --output data/outputs/tcc2/conclusao --hours 6 --resume --retry-incomplete
+```
+
+Execuções completas não são repetidas. Falhas e interrupções só são retentadas
+com `--retry-incomplete`, e a tentativa anterior fica em `attempt_history`.
+O manifesto recusa retomar com outro código, modelo ou desenho, e
+`source_snapshot.zip` preserva o código do início da campanha.
+
+Os scripts de análise ficam em `analysis/`:
+
+```bash
+# Template de revisão e CSVs; repita com --annotations após anotar os textos.
+python analysis/analyze_completion.py data/outputs/tcc2/conclusao --output data/outputs/tcc2/conclusao/review
+# Distância de embeddings entre versões publicadas; não mede veracidade.
+python analysis/measure_semantic_change.py data/outputs/tcc2/conclusao --model-path <snapshot-local> --output data/outputs/tcc2/conclusao/review/semantic.json
+# Referência externa SIR/SEIR com metadados brasileiros do ICWSM (Zenodo).
+python analysis/fetch_reference_data.py --output data/outputs/tcc2/external/metadata --member icwsm_dataset_share/brazil/misinfo_anonymized.txt
+python analysis/benchmark_external.py data/outputs/tcc2/external/metadata/misinfo_anonymized.txt --campaign data/outputs/tcc2/conclusao --annotations <anotacoes.json> --output data/outputs/tcc2/conclusao/benchmark
+```
