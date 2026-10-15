@@ -214,7 +214,7 @@ def test_result_json_contains_final_metrics_and_provenance(monkeypatch, tmp_path
 
 
 def test_expanded_runner_applies_treatment_and_saves_before_analysis(monkeypatch, tmp_path):
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts" / "legacy"))
     import run_expanded
 
     monkeypatch.setattr(engine, "LLMClient", lambda **_: ControlledLLM())

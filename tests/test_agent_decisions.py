@@ -41,6 +41,7 @@ class FakeModel:
         self.G.add_edge(0, 1)
         self.agents_by_id = {}
         self.tick = 0
+        self.message_audit = []
         import random
         self.rng = random.Random(42)
 

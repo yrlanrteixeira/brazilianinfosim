@@ -186,7 +186,7 @@ def plot_simulation(result: "SimulationResult", save_path: str = None) -> None:
         ax1.legend(fontsize=8)
     ax1.set_xlabel("Tick")
     ax1.set_ylabel("Alcance (%)")
-    ax1.set_title("Propagação da Desinformação")
+    ax1.set_title("Alcance da linhagem do boato")
     ax1.set_ylim(0, 105)
     ax1.grid(alpha=0.3)
 
@@ -194,8 +194,8 @@ def plot_simulation(result: "SimulationResult", save_path: str = None) -> None:
     ax2 = fig.add_subplot(gs[1])
     ax2.plot(df.index, df["believers"] / cfg.n_agents * 100, color="#2A9D8F", linewidth=2)
     ax2.set_xlabel("Tick")
-    ax2.set_ylabel("% Acreditam")
-    ax2.set_title("Evolução da Crença na Rede")
+    ax2.set_ylabel("% da população inicial com estado > 0,5")
+    ax2.set_title("Estado operacional derivado das ações")
     ax2.set_ylim(0, 105)
     ax2.grid(alpha=0.3)
 
@@ -217,7 +217,7 @@ def plot_simulation(result: "SimulationResult", save_path: str = None) -> None:
             reach_by_type.values,
             color=[colors.get(t, "#888") for t in reach_by_type.index]
         )
-        ax3.set_ylabel("% que recebeu a mensagem")
+        ax3.set_ylabel("% exposto à linhagem do boato")
         ax3.set_title("Alcance entre Agentes Ativos por Tipo Final")
         ax3.set_ylim(0, 110)
         ax3.tick_params(axis="x", rotation=30)

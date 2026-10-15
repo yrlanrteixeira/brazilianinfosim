@@ -10,6 +10,7 @@ import platform
 import tempfile
 from datetime import datetime, timezone
 from uuid import uuid4
+from zipfile import ZipFile, ZIP_DEFLATED
 
 
 def campaign_directory(name: str) -> Path:
@@ -19,7 +20,7 @@ def campaign_directory(name: str) -> Path:
 
 def manifest(settings: dict) -> dict:
     root = Path(__file__).resolve().parents[2]
-    files = sorted([*root.glob("src/**/*.py"), *root.glob("run_*.py"), root / "requirements.txt"])
+    files = sorted([*root.glob("src/**/*.py"), *root.glob("scripts/**/*.py"), root / "requirements.txt"])
     digest = sha256()
     for path in files:
         digest.update(path.relative_to(root).as_posix().encode())
@@ -34,7 +35,7 @@ def manifest(settings: dict) -> dict:
             packages[package] = version(package)
         except PackageNotFoundError:
             packages[package] = None
-    return {"schema_version": 2, "source_sha256": digest.hexdigest(),
+    return {"schema_version": 3, "source_sha256": digest.hexdigest(),
             "python": platform.python_version(), "packages": packages,
             "provider": provider, "model": model, "model_digest": None,
             "llm_seed": settings.get("llm_seed"), "settings": settings}
@@ -54,6 +55,22 @@ def atomic_json(path: Path, payload: dict) -> None:
             os.unlink(temporary)
 
 
+def archive_source(directory: Path, expected_sha256: str) -> None:
+    """Preserva os bytes do código medido, inclusive alterações locais."""
+    root = Path(__file__).resolve().parents[2]
+    files = sorted([*root.glob("src/**/*.py"), *root.glob("scripts/**/*.py"), root / "requirements.txt"])
+    contents = [(path.relative_to(root).as_posix(), path.read_bytes()) for path in files]
+    digest = sha256()
+    for name, raw in contents:
+        digest.update(name.encode())
+        digest.update(raw)
+    if digest.hexdigest() != expected_sha256:
+        raise ValueError("Código mudou durante a criação da campanha.")
+    with ZipFile(directory / "source_snapshot.zip", "x", compression=ZIP_DEFLATED) as archive:
+        for name, raw in contents:
+            archive.writestr(name, raw)
+
+
 def save_result(result, directory: Path, label: str) -> None:
     """Salva antes de calcular embeddings ou gráficos; JSON é a fonte canônica."""
     from metrics.analysis import summarize_result
@@ -67,5 +84,12 @@ def save_result(result, directory: Path, label: str) -> None:
         "mutations": result.mutations,
         "initial_state": result.initial_state,
         "decision_audit": result.decision_audit,
+        "message_audit": result.message_audit,
+        "metric_semantics": {
+            "final_reach_pct": "rumor_lineage_exposure",
+            "final_correction_reach_pct": "refutation_lineage_exposure",
+            "final_believers": "action_derived_state_above_0.5",
+            "content_stance": "requires_separate_annotation",
+        },
     }
     atomic_json(directory / f"{label}.json", payload)

@@ -7,6 +7,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING, Optional
+import random
 import mesa
 
 from .profiles import AgentProfile
@@ -130,19 +131,25 @@ class InfoAgent(mesa.Agent):
         self._tick_seen.add(key)
         self.seen_rumors.add(key)
         self.inbox.append(message)
+        self._audit_message("received", message)
 
     def step(self) -> None:
         """Executado a cada tick pelo Mesa."""
-        if not self.inbox:
+        round_inboxes = getattr(self.model, "round_inboxes", None)
+        messages = self.inbox if round_inboxes is None else round_inboxes[self.node_id]
+        if not messages:
             return
 
-        messages, self.inbox = self.inbox, []
+        if round_inboxes is None:
+            self.inbox = []
         if self._tick_seen_at != self.model.tick:
             self._tick_seen_at = self.model.tick
             self._tick_seen = set()
-        self._tick_seen.update(m.dedup_key for m in messages)
+        if round_inboxes is None:
+            self._tick_seen.update(m.dedup_key for m in messages)
         for message in messages:
-            if self.profile.agent_type.value == "indiferente":
+            if (self.profile.agent_type.value == "indiferente"
+                    and not getattr(getattr(self.model, "config", None), "indifferent_uses_llm", False)):
                 self._handle_indifferent(message)
             else:
                 self._process_message(message)
@@ -161,7 +168,8 @@ class InfoAgent(mesa.Agent):
         if message.is_refutation and not content.startswith("[REFUTAÇÃO]"):
             content = f"[REFUTAÇÃO] {content}"
         self.llm.audit_context = {"node_id": self.node_id, "tick": self.model.tick,
-                                  "is_refutation": message.is_refutation}
+                                  "is_refutation": message.is_refutation,
+                                  "agent_type": self.profile.agent_type.value}
         decision, new_content, refused = self.llm.decide(
             agent_description=self.profile.to_prompt_description(),
             message_content=content,
@@ -171,11 +179,21 @@ class InfoAgent(mesa.Agent):
         if refused:
             self.refusal_count += 1
 
+        mutation_suppressed = decision == Decision.MUTATE and not getattr(
+            getattr(self.model, "config", None), "mutation_enabled", True
+        )
+        sent_content = ""
+        if not refused:
+            if decision == Decision.SHARE or mutation_suppressed:
+                sent_content = message.content
+            elif decision in {Decision.MUTATE, Decision.REFUTE}:
+                sent_content = new_content
         self.interaction_history.append({
             "tick": self.model.tick,
             "received": message.content,
             "decision": decision.value,
-            "sent": new_content,
+            "sent": sent_content,
+            "mutation_suppressed": mutation_suppressed,
             "refused": refused,   # distingue recusa do LLM de decisão do perfil
             "is_refutation": message.is_refutation,
         })
@@ -189,7 +207,7 @@ class InfoAgent(mesa.Agent):
         self.belief_level = min(1.0, max(0.0, self.belief_level + direction * changes[decision]))
 
         if decision == Decision.REFUTE:
-            # Contestar uma correção volta a apoiar a linhagem do boato.
+            # Alternância operacional de linhagem; não classifica o sentido do texto.
             refutation = Message(
                 content=new_content if message.is_refutation else f"[REFUTAÇÃO] {new_content}",
                 original_content=message.original_content,
@@ -206,7 +224,7 @@ class InfoAgent(mesa.Agent):
 
         elif decision == Decision.MUTATE:
             # O modelo às vezes muta com `content` vazio: repassa sem alterar.
-            if new_content.strip():
+            if new_content.strip() and not mutation_suppressed:
                 self._broadcast(message.mutate(new_content, sender_id=self.node_id))
             else:
                 self._broadcast(message.forward(self.node_id))
@@ -217,8 +235,24 @@ class InfoAgent(mesa.Agent):
         # Nós removidos por remove_hubs saem do grafo; evita NetworkXError.
         if self.node_id not in self.model.G:
             return
+        self._audit_message("sent", message)
         neighbors = list(self.model.G.neighbors(self.node_id))
+        limit = getattr(self.model, "active_forwarding_limit", None)
+        if limit is not None and len(neighbors) > limit:
+            selection = random.Random(
+                f"forward:{self.model.config.seed}:{self.model.tick}:{self.node_id}:{message.dedup_key}"
+            )
+            neighbors = selection.sample(sorted(neighbors), limit)
         for neighbor_id in neighbors:
             neighbor = self.model.agents_by_id.get(neighbor_id)
             if neighbor:
                 neighbor.receive(message)
+
+    def _audit_message(self, event: str, message: Message) -> None:
+        self.model.message_audit.append({
+            "event": event, "node_id": self.node_id, "tick": self.model.tick,
+            "content": message.content, "original_content": message.original_content,
+            "parent_content": message.parent_content, "sender_id": message.sender_id,
+            "hops": message.hops, "is_refutation": message.is_refutation,
+            "parent_is_refutation": message.parent_is_refutation,
+        })

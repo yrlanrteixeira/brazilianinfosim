@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import run_impact
 
 
@@ -22,6 +22,19 @@ def test_design_has_unique_controls_and_complete_treatment_grid():
         assert sum(c.intervention is None for c in configs) == 1
         assert {c.intervention_tick for c in configs} == {0, 1, 3, 10}
         assert len({(c.network_seed, c.profile_seed, c.activation_seed, c.llm_seed) for c in configs}) == 1
+
+
+def test_queue_completes_all_timings_before_starting_the_next_block():
+    cases = run_impact.design()
+    first = cases[:13]
+    assert len({case["block"] for case in first}) == 1
+    assert first[0]["config"].intervention is None
+    assert {case["config"].intervention_tick for case in first} == {0, 1, 3, 10}
+    assert cases[13]["config"].intervention is None
+    assert {case["replicate"] for case in cases[:26]} == {0, 1}
+    assert len({(case["config"].network_seed, case["config"].profile_seed,
+                 case["config"].topology, case["subject"]) for case in cases[:26]}) == 1
+    assert [case["id"] for case in cases] == [case["id"] for case in run_impact.design()]
 
 
 @pytest.fixture
@@ -111,3 +124,26 @@ def test_resume_cannot_mix_designs(fake_campaign, tmp_path):
     run_impact.run(cases, tmp_path, hours=1)
     with pytest.raises(ValueError, match="desenho mudou"):
         run_impact.run(run_impact.design(n_agents=60, pilot=True), tmp_path, hours=1, resume=True)
+
+
+def test_explicit_session_budget_allows_work_on_another_day(fake_campaign, tmp_path):
+    cases = run_impact.design(n_seeds=1, repeats=1, pilot=True)
+    run_impact.run(cases, tmp_path, hours=0, session_budget=True)
+    records = run_impact.run(cases, tmp_path, hours=1, resume=True, session_budget=True)
+    assert len(records) == 4 and all(r["status"] == "success" for r in records)
+    assert len(list((tmp_path / "budget_sessions").glob("*.json"))) == 2
+
+
+def test_retry_keeps_failed_audit_and_never_reruns_successes(fake_campaign, tmp_path):
+    cases = run_impact.design(n_seeds=1, repeats=1, pilot=True)
+    fake_campaign.fail = True
+    failed = run_impact.run(cases, tmp_path, hours=1, session_budget=True)
+    fake_campaign.fail = False
+    records = run_impact.run(cases, tmp_path, hours=1, resume=True, session_budget=True, retry_incomplete=True)
+    assert all(r["status"] == "success" for r in records)
+    assert fake_campaign.built == 7
+    archived = list((tmp_path / "attempt_history").glob("*/*.json"))
+    assert len(archived) == 3
+    assert json.loads(archived[0].read_text(encoding="utf-8"))["decision_audit"] == failed[0]["decision_audit"]
+    run_impact.run(cases, tmp_path, hours=1, resume=True, session_budget=True, retry_incomplete=True)
+    assert fake_campaign.built == 7
