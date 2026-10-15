@@ -36,11 +36,16 @@ class ReplayModel(mesa.Model):
         self.snapshots: list[dict] = data["ticks"]
         self.index = 0
 
-        self._initial_graph: nx.Graph = build_network(
-            topology=Topology(self.meta["topology"]),
-            n_agents=self.meta["n_agents"],
-            seed=self.meta.get("network_seed", self.meta["seed"]),
-        )
+        if "initial_edges" in self.meta:
+            self._initial_graph = nx.Graph()
+            self._initial_graph.add_nodes_from(range(self.meta["n_agents"]))
+            self._initial_graph.add_edges_from(self.meta["initial_edges"])
+        else:
+            self._initial_graph = build_network(
+                topology=Topology(self.meta["topology"]),
+                n_agents=self.meta["n_agents"],
+                seed=self.meta.get("network_seed", self.meta["seed"]),
+            )
         # Layout fixo: recalcular a cada tick faz o grafo pular na tela.
         self.pos = nx.spring_layout(self._initial_graph, seed=self.meta["seed"])
         self._sync_graph()

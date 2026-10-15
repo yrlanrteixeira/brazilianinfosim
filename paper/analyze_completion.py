@@ -12,7 +12,7 @@ from statistics import mean, median
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-from metrics.content_review import content_key, review_exposure
+from metrics.content_review import content_key, review_exposure, update_review_template
 from simulation.persistence import atomic_json
 
 
@@ -163,8 +163,7 @@ def analyze(campaign, output, annotations_path=None):
     write_csv(output / "decisions_by_profile.csv", [{"profile": p, "action": a, "refused": r, "count": count}
                                                      for (p, a, r), count in sorted(profiles.items())])
     template = output / "review_template.json"
-    if not template.exists():
-        atomic_json(template, inventory)
+    update_review_template(template, inventory)
     result = {"completed_runs": len(good), "attempt_statuses": dict(Counter(r["status"] for r in records)),
               "fully_classified_runs": sum(r["classification_complete"] for r in rows.values()),
               "unique_texts": len(inventory), "effects": effects,

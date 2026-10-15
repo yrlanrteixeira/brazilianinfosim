@@ -2,6 +2,7 @@
 
 import importlib
 import json
+import os
 from pathlib import Path
 import sys
 
@@ -13,6 +14,26 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from simulation import engine
 from simulation.replay import ReplayModel
 from tests.test_recorder_integration import FakeLLM
+
+
+def test_research_cli_loads_environment_before_connecting(monkeypatch, tmp_path):
+    from dotenv import load_dotenv
+    import run_research
+
+    environment = tmp_path / ".env"
+    environment.write_text("OLLAMA_BASE_URL=http://synthetic-ollama.invalid:11434\n", encoding="utf-8")
+    monkeypatch.setenv("OLLAMA_BASE_URL", "")
+    monkeypatch.delenv("OLLAMA_BASE_URL")
+    monkeypatch.setattr(run_research, "load_dotenv", lambda: load_dotenv(environment))
+    monkeypatch.setattr(sys, "argv", ["run_research.py", "--output", str(tmp_path / "campaign"), "--pilot"])
+    endpoints = []
+    monkeypatch.setattr(run_research, "local_model_metadata",
+                        lambda model: endpoints.append(os.getenv("OLLAMA_BASE_URL")))
+    monkeypatch.setattr(run_research, "run", lambda *args, **kwargs: None)
+
+    run_research.main()
+
+    assert endpoints == ["http://synthetic-ollama.invalid:11434"]
 
 
 @pytest.mark.parametrize("module_name", ["run_subjects", "run_supplementary"])

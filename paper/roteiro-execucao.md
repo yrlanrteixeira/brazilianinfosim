@@ -84,6 +84,10 @@ textos com o protocolo. As categorias são `supports`, `rejects`, `mixed`,
 `unrelated`, `ambiguous` e `pending`; cada anotação precisa de autor e
 justificativa. O texto e seu hash não devem ser modificados.
 
+Ao repetir a análise após novas execuções, o template recebe os textos novos e
+preserva as revisões existentes. Incorpore os itens pendentes ao arquivo de
+anotações separado antes de concluir a revisão.
+
 Classifique a posição perante a alegação inicial. Verifique separadamente
 novas afirmações factuais e suas fontes. O exemplo de anotação do piloto
 é revisão por IA, não padrão de validação humana. Para medir concordância,

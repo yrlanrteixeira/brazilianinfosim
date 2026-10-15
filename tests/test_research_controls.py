@@ -15,6 +15,7 @@ import pytest
 
 from agents.agent import Decision, Message
 from agents.profiles import AgentType
+from metrics.content_review import content_key
 from network.topology import Topology
 import simulation.engine as engine
 from simulation.baseline import run_epidemic
@@ -149,9 +150,29 @@ def test_research_pipeline_saves_auditable_data_without_real_llm(tmp_path, monke
     cases = research.design(pilot=True)
     records = research.run(cases, tmp_path, hours=1, exporter=research.export_analysis, session_budget=True)
     assert len(records) == 4 and all(r["status"] == "success" for r in records)
+    state = json.loads((tmp_path / "status.json").read_text(encoding="utf-8"))
+    assert state["complete_blocks"] == 1
+    research.export_analysis(tmp_path, records[:-1], len(cases), "running")
+    state = json.loads((tmp_path / "status.json").read_text(encoding="utf-8"))
+    assert state["complete_blocks"] == 0
+    research.export_analysis(tmp_path, [*records[:-1], {**records[-1], "status": "failed"}],
+                             len(cases), "finished_with_failures")
+    state = json.loads((tmp_path / "status.json").read_text(encoding="utf-8"))
+    assert state["complete_blocks"] == 0
+    output = tmp_path / "review"
+    output.mkdir()
+    original = cases[0]["config"].initial_message
+    key = content_key(original, original)
+    annotation = {"stance": "supports", "reviewer": "teste controlado",
+                  "rationale": "Classificação sintética para verificar a preservação."}
+    template = output / "review_template.json"
+    template.write_text(json.dumps({key: annotation}), encoding="utf-8")
     result = analyze(tmp_path, tmp_path / "review")
     assert result["completed_runs"] == 4 and result["fully_classified_runs"] == 0
     assert result["unique_texts"] > 1
+    updated = json.loads(template.read_text(encoding="utf-8"))
+    assert len(updated) == result["unique_texts"]
+    assert updated[key] == annotation
     identity = json.loads((tmp_path / "campaign.json").read_text(encoding="utf-8"))["identity"]
     digest = sha256()
     with ZipFile(tmp_path / "source_snapshot.zip") as archive:

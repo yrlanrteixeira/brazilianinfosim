@@ -218,6 +218,7 @@ class InfoSimModel(mesa.Model):
             "topology": c.topology.value,
             "seed": c.seed,
             "network_seed": c.network_seed if c.network_seed is not None else c.seed,
+            "initial_edges": self.initial_state["edges"],
             "inject_at": c.inject_at,
             "intervention": c.intervention,
             "intervention_tick": c.intervention_tick,

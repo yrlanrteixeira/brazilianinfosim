@@ -2,6 +2,9 @@
 
 from hashlib import sha256
 import json
+from pathlib import Path
+
+from simulation.persistence import atomic_json
 
 
 STANCES = ("supports", "rejects", "mixed", "unrelated")
@@ -11,6 +14,13 @@ UNRESOLVED = ("pending", "ambiguous")
 def content_key(original: str, content: str) -> str:
     pair = json.dumps([original, content], ensure_ascii=False)
     return sha256(pair.encode("utf-8")).hexdigest()
+
+
+def update_review_template(path: Path, inventory: dict) -> None:
+    """Acrescenta textos novos sem substituir anotações já editadas."""
+    existing = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    if not path.exists() or inventory.keys() - existing.keys():
+        atomic_json(path, {**inventory, **existing})
 
 
 def review_exposure(payload: dict, annotations: dict) -> dict:

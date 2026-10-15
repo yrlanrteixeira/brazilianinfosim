@@ -10,6 +10,7 @@ import random
 import sys
 
 from loguru import logger
+from dotenv import load_dotenv
 import pandas as pd
 
 from run_impact import local_model_metadata, run
@@ -89,13 +90,14 @@ def export_analysis(directory, records, planned, status):
     pd.DataFrame(rows).to_csv(directory / "runs.csv", index=False)
     pd.DataFrame(pairs).to_csv(directory / "paired_effects.csv", index=False)
     counts = Counter(r["status"] for r in records)
+    campaign = json.loads((directory / "campaign.json").read_text(encoding="utf-8"))
+    block_sizes = Counter(case["block"] for case in campaign["identity"]["settings"]["cases"])
+    completed = Counter(record["block"] for record in successful.values())
     atomic_json(directory / "status.json", {
         "status": status, "planned": planned, "attempted": len(records), **counts,
         "paired_comparisons": len(pairs),
         "archived_attempts": len(list((directory / "attempt_history").glob("*/*.json"))),
-        "complete_blocks": sum(all(c["status"] == "success" for c in records if c["block"] == block)
-                               and sum(c["block"] == block for c in records) == 22
-                               for block in {r["block"] for r in records}),
+        "complete_blocks": sum(completed[block] == size for block, size in block_sizes.items()),
         "interpretation": "Métricas de linhagem são operacionais. Análise por conteúdo exige revisão separada.",
     })
 
@@ -118,6 +120,7 @@ def main():
         parser.error("Orçamento de horas deve ser positivo.")
     if args.retry_incomplete and not args.resume:
         parser.error("Use --retry-incomplete somente com --resume.")
+    load_dotenv()
     cases = design(args.seed_count, args.repeats, args.agents, args.ticks, args.model, args.pilot)
     print(json.dumps({"cases": len(cases), "families": Counter(c["family"] for c in cases),
                       "hours": args.hours, "pilot_excluded_from_main": args.pilot}, ensure_ascii=False), flush=True)

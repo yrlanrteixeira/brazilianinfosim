@@ -92,11 +92,13 @@ do Markdown. A aplicação ao template institucional depende do fonte original.
 
 ## Verificação da entrega
 
-- 204 testes passaram em Python 3.14.3, com provedores controlados e sem
+- 211 testes passaram em Python 3.14.3, com provedores controlados e sem
   chamadas reais a LLM.
 - Os novos testes incluem inversão de linhagem sem mudança de posição textual,
   recebimentos deduplicados, exposição anterior à remoção, anotações pendentes,
   proteção do texto anotado, pareamento, gravação pelo CLI e replay após remoção.
+- A revisão final cobre acréscimo de textos às anotações, contagem dos blocos do
+  piloto, configuração do Ollama pelo `.env` e replay de redes com densidade controlada.
 - O planejamento confirmou 2.112 casos para a campanha complementar, sem
   iniciá-la. O executor de impacto mantém sua grade separada de 6.240 casos.
 - A compilação dos módulos e a verificação de whitespace passaram.

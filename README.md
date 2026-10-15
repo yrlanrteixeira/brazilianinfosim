@@ -214,11 +214,12 @@ A entrada também pode ser um JSON de resultado ou uma pasta de resultados.
 As posições admitidas, sempre relativas à alegação inicial, são `supports`
 (apoia), `rejects` (rejeita), `mixed` (mista), `unrelated` (alheia),
 `ambiguous` (ambígua) e `pending` (pendente). Toda revisão exige autoria e
-justificativa. O modelo de anotações existente é preservado nas reexecuções.
+justificativa. Nas reexecuções, o modelo de anotações recebe os textos novos e
+preserva os itens já editados.
 Os hashes vinculam a revisão aos resultados, às anotações e aos pares de textos.
 Edite apenas os campos de revisão; alterações nos textos identificados pelo
-hash são recusadas. Se novas execuções acrescentarem textos, use outra pasta
-de saída para gerar o inventário ampliado com as anotações anteriores.
+hash são recusadas. Se usar um arquivo de anotações separado, incorpore nele os
+novos itens pendentes do template antes de concluir a revisão.
 
 O alcance conta agentes únicos sobre a população inicial. Pendências e
 ambiguidades deixam o alcance por posição ausente (`null`); o relatório

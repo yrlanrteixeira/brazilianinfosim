@@ -109,6 +109,25 @@ def test_replay_preserves_an_independent_network_seed(tmp_path, monkeypatch):
     assert set(replay.G.edges()) == set(model.G.edges())
 
 
+@pytest.mark.parametrize("topology", list(Topology))
+def test_replay_preserves_the_recorded_graph_with_controlled_density(tmp_path, monkeypatch, topology):
+    monkeypatch.setattr("simulation.engine.LLMClient", lambda **_: FakeLLM())
+    target = tmp_path / "controlled-network.json"
+    model = InfoSimModel(SimulationConfig(
+        n_agents=12, max_ticks=1, topology=topology, network_degree=4,
+        record_path=str(target), intervention="remove_hubs", intervention_tick=0,
+    ))
+    initial_edges = set(model.G.edges())
+    model.run()
+
+    replay = ReplayModel(str(target))
+
+    assert set(replay.G.edges()) == initial_edges
+    replay.step()
+    assert set(replay.G) == set(model.G)
+    assert set(replay.G.edges()) == set(model.G.edges())
+
+
 def test_recording_preserves_exposure_after_removing_the_emitter(tmp_path, monkeypatch):
     monkeypatch.setattr("simulation.engine.LLMClient", lambda **_: FakeLLM())
     target = tmp_path / "removed-emitter.json"

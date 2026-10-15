@@ -8,7 +8,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
-from metrics.content_review import paired_content_effects, review_exposure
+from metrics.content_review import paired_content_effects, review_exposure, update_review_template
 from simulation.persistence import atomic_json
 
 
@@ -27,14 +27,13 @@ def export_content_review(source: Path, output: Path, annotations_path: Path | N
         paths = sorted(source.glob("*.json"))
     if not paths:
         raise ValueError("Nenhum resultado completo encontrado.")
-    protected = {path.resolve() for path in paths}
+    protected_results = {path.resolve() for path in paths}
+    protected = set(protected_results)
     if annotations_path:
         protected.add(annotations_path.resolve())
     report_path = output / "exposure.json"
     template_path = output / "review_template.json"
-    if report_path.resolve() in protected or (
-        not template_path.exists() and template_path.resolve() in protected
-    ):
+    if report_path.resolve() in protected or template_path.resolve() in protected_results:
         raise ValueError("A saída não pode sobrescrever resultados ou anotações de origem.")
     reports, inventory = {}, {}
     for path in paths:
@@ -52,8 +51,7 @@ def export_content_review(source: Path, output: Path, annotations_path: Path | N
         "runs": reports, "paired_effects": paired_content_effects(records, reports),
     }
     atomic_json(report_path, report)
-    if not template_path.exists():
-        atomic_json(template_path, inventory)
+    update_review_template(template_path, inventory)
     return report
 
 

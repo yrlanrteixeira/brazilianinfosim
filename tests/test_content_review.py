@@ -168,6 +168,43 @@ def test_review_export_preserves_source_and_existing_annotations(payload, tmp_pa
     assert template.read_bytes() == edited
 
 
+def test_incremental_review_adds_new_texts_and_keeps_existing_annotations(payload, tmp_path):
+    source = tmp_path / "run.json"
+    source.write_text(json.dumps(payload), encoding="utf-8")
+    output = tmp_path / "review"
+    export_content_review(source, output)
+    template = output / "review_template.json"
+    annotations = json.loads(template.read_text(encoding="utf-8"))
+    key = content_key("Boato", "Boato")
+    annotations[key].update(annotation("supports"))
+    template.write_text(json.dumps(annotations), encoding="utf-8")
+    payload["message_audit"].append({
+        "event": "received", "node_id": 3, "original_content": "Boato",
+        "content": "Nova variante sintética", "is_refutation": False,
+    })
+    source.write_text(json.dumps(payload), encoding="utf-8")
+    original = source.read_bytes()
+
+    export_content_review(source, output, template)
+
+    updated = json.loads(template.read_text(encoding="utf-8"))
+    assert updated[key] == annotations[key]
+    assert updated[content_key("Boato", "Nova variante sintética")]["stance"] == "pending"
+    assert source.read_bytes() == original
+
+
+@pytest.mark.parametrize("filename", ["review_template.json", "exposure.json"])
+def test_review_outputs_cannot_overwrite_source_results(payload, tmp_path, filename):
+    source = tmp_path / filename
+    source.write_text(json.dumps(payload), encoding="utf-8")
+    original = source.read_bytes()
+
+    with pytest.raises(ValueError, match="sobrescrever"):
+        export_content_review(source, tmp_path)
+
+    assert source.read_bytes() == original
+
+
 def test_campaign_review_cli_excludes_failed_attempts(payload, tmp_path, monkeypatch):
     import run_content_review
 
