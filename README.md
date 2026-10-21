@@ -251,7 +251,7 @@ controlados não constituem novas amostras experimentais.
 ## Campanha de pesquisa
 
 O `run_research.py` prepara contrastes pareados de rede, perfis, ceticismo,
-mutação e intervenções. A grade padrão tem 2.112 casos: 12 sementes de cenário,
+mutação e intervenções. A grade padrão tem 4.224 casos: 24 sementes de cenário,
 quatro redações de duas alegações, duas sementes de LLM e 22 condições por bloco.
 Ao contrário do `run_impact.py`, cada sessão tem orçamento próprio.
 
@@ -273,7 +273,7 @@ pareados completos e as três topologias. Cada fatia roda em uma única máquina
 em pasta própria, com o mesmo commit e o mesmo digest do modelo.
 
 ```bash
-python scripts/run_research.py --output data/outputs/tcc2/conclusao-shard-0-de-4 --shard 0/4 --hours 6
+python scripts/run_research.py --output data/outputs/tcc2/conclusao/shard-0-de-8 --shard 0/8 --hours 6
 ```
 
 [notebooks/campanha_colab.ipynb](notebooks/campanha_colab.ipynb) roda várias fatias

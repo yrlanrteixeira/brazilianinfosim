@@ -185,12 +185,12 @@ def test_research_pipeline_saves_auditable_data_without_real_llm(tmp_path, monke
 
 def test_shards_split_the_grid_by_scenario_seed(monkeypatch, capsys):
     planned = []
-    for index in range(4):
-        monkeypatch.setattr(sys, "argv", ["run_research.py", "--output", "unused", "--dry-run", "--shard", f"{index}/4"])
+    for index in range(8):
+        monkeypatch.setattr(sys, "argv", ["run_research.py", "--output", "unused", "--dry-run", "--shard", f"{index}/8"])
         research.main()
         planned.append(json.loads(capsys.readouterr().out)["cases"])
-    assert planned == [528] * 4 and sum(planned) == len(research.design())
-    monkeypatch.setattr(sys, "argv", ["run_research.py", "--output", "unused", "--dry-run", "--shard", "4/4"])
+    assert planned == [528] * 8 and sum(planned) == len(research.design())
+    monkeypatch.setattr(sys, "argv", ["run_research.py", "--output", "unused", "--dry-run", "--shard", "8/8"])
     with pytest.raises(SystemExit):
         research.main()
 

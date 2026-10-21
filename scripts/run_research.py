@@ -21,7 +21,7 @@ from simulation.persistence import atomic_json
 from simulation.research_messages import CORPUS_METADATA, STIMULI
 
 
-def design(n_seeds=12, repeats=2, n_agents=50, ticks=12,
+def design(n_seeds=24, repeats=2, n_agents=50, ticks=12,
            model="qwen3:4b-instruct-2507-q4_K_M", pilot=False):
     """Um controle compartilhado por bloco, com todos os contrastes antes do próximo."""
     if min(n_seeds, repeats) < 1 or ticks < 3:
@@ -113,7 +113,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--hours", type=float, default=1)
-    parser.add_argument("--seed-count", type=int, default=12)
+    parser.add_argument("--seed-count", type=int, default=24)
     parser.add_argument("--repeats", type=int, default=2)
     parser.add_argument("--agents", type=int, default=50)
     parser.add_argument("--ticks", type=int, default=12)
