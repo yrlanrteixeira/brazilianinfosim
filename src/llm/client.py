@@ -87,6 +87,9 @@ CACHE_MODES = ("exact", "semantic", "off")
 
 # Tentativas da MESMA decisão. Falhas nunca viram comportamento do agente.
 MAX_BACKEND_ATTEMPTS = 3
+# Novas consultas, com outra semente, quando a resposta não traz decisão válida.
+INVALID_RESPONSE_RETRIES = 3
+RETRY_SEED_STEP = 1_000_000
 
 
 class BackendUnavailable(RuntimeError):
@@ -244,13 +247,13 @@ class OllamaProvider(LLMProvider):
         self.request_timeout = timeout
 
     def complete(self, prompt: str, max_tokens: int = 300,
-                 temperature: float = DEFAULT_TEMPERATURE) -> str:
+                 temperature: float = DEFAULT_TEMPERATURE, seed: Optional[int] = None) -> str:
         response = self.client.with_options(timeout=self.request_timeout).chat.completions.create(
             model=self._model,
             max_tokens=max_tokens,
             messages=[{"role": "user", "content": prompt}],
             temperature=temperature,
-            seed=self.seed,
+            seed=self.seed if seed is None else seed,
             response_format={"type": "json_object"},
         )
         return response.choices[0].message.content.strip()
@@ -465,58 +468,63 @@ class LLMClient:
                 cached.get("refused", False),
             )
 
-        # Chama o provider
-        raw = self._call_provider(prompt)
+        for retry in range(INVALID_RESPONSE_RETRIES + 1):
+            seed = self.seed + retry * RETRY_SEED_STEP if retry and self.seed is not None else None
+            raw = self._call_provider(prompt, seed)
 
-        parsed_json = False
-        try:
-            if not isinstance(raw, str):
-                raise ValueError("resposta deve ser texto")
-            parsed = self._extract_json(raw)
-            parsed_json = True
-            if not isinstance(parsed, dict):
-                raise ValueError("JSON deve ser um objeto")
-            label = parsed.get("decision")
-            content = parsed.get("content")
-            if not isinstance(label, str) or not isinstance(content, str):
-                raise ValueError("decision e content devem ser strings")
-            decision = parse_decision(label)
-            if decision is None:
-                raise ValueError(f"label desconhecido: {parsed.get('decision')!r}")
-            if decision in {Decision.MUTATE, Decision.REFUTE} and not content.strip():
-                raise ValueError("mutação e refutação exigem conteúdo")
-            if label != decision.value:
-                self._normalized_labels += 1
-            self.audit_log[-1].update(decision=decision.value, content=content, refused=False)
-            self._add_to_cache(
-                prompt, {"decision": decision.value, "content": content, "refused": False}
-            )
-            return decision, content, False
-
-        except (json.JSONDecodeError, KeyError, ValueError) as e:
-            # Só aqui é possível distinguir recusa de erro de formato: se não
-            # veio JSON e o texto casa com um marcador de recusa, foi guardrail.
-            if not parsed_json and isinstance(raw, str) and is_refusal(raw):
-                self._refusals += 1
-                self.audit_log[-1].update(decision=Decision.IGNORE.value, content="", refused=True)
-                logger.info(
-                    f"Recusa do modelo detectada ({self._refusals} total). "
-                    f"Registrada como IGNORAR, mas contabilizada à parte."
-                )
+            parsed_json = False
+            try:
+                if not isinstance(raw, str):
+                    raise ValueError("resposta deve ser texto")
+                parsed = self._extract_json(raw)
+                parsed_json = True
+                if not isinstance(parsed, dict):
+                    raise ValueError("JSON deve ser um objeto")
+                label = parsed.get("decision")
+                content = parsed.get("content")
+                if not isinstance(label, str) or not isinstance(content, str):
+                    raise ValueError("decision e content devem ser strings")
+                decision = parse_decision(label)
+                if decision is None:
+                    raise ValueError(f"label desconhecido: {parsed.get('decision')!r}")
+                if decision in {Decision.MUTATE, Decision.REFUTE} and not content.strip():
+                    raise ValueError("mutação e refutação exigem conteúdo")
+                if label != decision.value:
+                    self._normalized_labels += 1
+                self.audit_log[-1].update(decision=decision.value, content=content, refused=False)
                 self._add_to_cache(
-                    prompt,
-                    {"decision": Decision.IGNORE.value, "content": "", "refused": True},
+                    prompt, {"decision": decision.value, "content": content, "refused": False}
                 )
-                return Decision.IGNORE, "", True
+                return decision, content, False
 
-            self._parse_errors += 1
-            logger.warning(
-                f"Erro ao parsear resposta LLM ({self._parse_errors} total): {e}. "
-                f"Execução interrompida."
-            )
-            raise InvalidLLMResponse(str(e), raw) from e
+            except (json.JSONDecodeError, KeyError, ValueError) as e:
+                # Só aqui é possível distinguir recusa de erro de formato: se não
+                # veio JSON e o texto casa com um marcador de recusa, foi guardrail.
+                if not parsed_json and isinstance(raw, str) and is_refusal(raw):
+                    self._refusals += 1
+                    self.audit_log[-1].update(decision=Decision.IGNORE.value, content="", refused=True)
+                    logger.info(
+                        f"Recusa do modelo detectada ({self._refusals} total). "
+                        f"Registrada como IGNORAR, mas contabilizada à parte."
+                    )
+                    self._add_to_cache(
+                        prompt,
+                        {"decision": Decision.IGNORE.value, "content": "", "refused": True},
+                    )
+                    return Decision.IGNORE, "", True
 
-    def _call_provider(self, prompt: str) -> str:
+                self._parse_errors += 1
+                self.audit_log[-1]["invalid_response"] = str(e)
+                if retry < INVALID_RESPONSE_RETRIES:
+                    logger.warning(f"Resposta inválida ({e}); nova consulta da mesma decisão.")
+                    continue
+                logger.warning(
+                    f"Erro ao parsear resposta LLM ({self._parse_errors} total): {e}. "
+                    f"Execução interrompida."
+                )
+                raise InvalidLLMResponse(str(e), raw) from e
+
+    def _call_provider(self, prompt: str, seed: Optional[int] = None) -> str:
         """
         Chamada ao provider, isolada de propósito: o que falha aqui é
         infraestrutura, o que falha depois é conteúdo. Misturar os dois faz
@@ -532,11 +540,13 @@ class LLMClient:
             self._call_count += 1
             started = time.monotonic()
             event = {"call": self._call_count, "prompt": prompt,
-                     "seed": self.seed, "temperature": self.temperature,
+                     "seed": self.seed if seed is None else seed, "temperature": self.temperature,
                      **self.audit_context}
+            # A semente só é enviada na nova consulta; a primeira usa a do provider.
+            options = {} if seed is None else {"seed": seed}
             try:
                 raw = self.provider.complete(
-                    prompt=prompt, max_tokens=300, temperature=self.temperature
+                    prompt=prompt, max_tokens=300, temperature=self.temperature, **options
                 )
                 event["raw_response"] = raw
                 return raw

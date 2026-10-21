@@ -18,7 +18,8 @@ import json
 import pytest
 
 from agents.agent import Decision
-from llm.client import BackendUnavailable, ComputeBudgetExceeded, InvalidLLMResponse, LLMClient, MAX_BACKEND_ATTEMPTS
+from llm.client import (BackendUnavailable, ComputeBudgetExceeded, INVALID_RESPONSE_RETRIES, InvalidLLMResponse,
+                        LLMClient, MAX_BACKEND_ATTEMPTS)
 
 
 class FlakyProvider:
@@ -101,15 +102,15 @@ def test_a_success_resets_the_streak(monkeypatch):
 
 
 def test_parse_error_does_not_count_as_backend(monkeypatch):
-    client, _ = _client(monkeypatch, ["isto nao e json"])
+    client, _ = _client(monkeypatch, ["isto nao e json"] * (INVALID_RESPONSE_RETRIES + 1))
     with pytest.raises(InvalidLLMResponse):
         _decide(client)
-    assert client.stats["parse_errors"] == 1
+    assert client.stats["parse_errors"] == INVALID_RESPONSE_RETRIES + 1
     assert client.stats["backend_errors"] == 0
 
 
 def test_parse_error_aborts_instead_of_fabricating_a_decision(monkeypatch):
-    client, _ = _client(monkeypatch, ["lixo"])
+    client, _ = _client(monkeypatch, ["lixo"] * (INVALID_RESPONSE_RETRIES + 1))
     with pytest.raises(InvalidLLMResponse) as error:
         _decide(client)
     assert error.value.raw_response == "lixo"
