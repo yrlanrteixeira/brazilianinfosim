@@ -7,12 +7,12 @@ from pathlib import Path
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-from simulation.persistence import atomic_json
+from simulation.persistence import atomic_json, load_campaigns
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("campaign", type=Path)
+    parser.add_argument("campaigns", type=Path, nargs="+", help="Uma pasta ou as fatias (--shard) da mesma campanha")
     parser.add_argument("--model-path", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
@@ -23,11 +23,11 @@ def main():
     torch.set_num_threads(2)
     encoder = SentenceTransformer(str(args.model_path), device="cpu", local_files_only=True)
     events, inputs = [], []
-    for path in sorted((args.campaign / "attempts").glob("*.json")):
-        record = json.loads(path.read_text(encoding="utf-8"))
+    _, attempts, _ = load_campaigns(args.campaigns)
+    for campaign, record in attempts:
         if record["status"] != "success":
             continue
-        raw = (args.campaign / "results" / f"{record['id']}.json").read_bytes()
+        raw = (campaign / "results" / f"{record['id']}.json").read_bytes()
         inputs.append({"id": record["id"], "sha256": sha256(raw).hexdigest()})
         for event in json.loads(raw)["message_audit"]:
             if event["event"] != "sent":

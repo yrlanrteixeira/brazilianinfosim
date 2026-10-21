@@ -21,7 +21,7 @@ from simulation.persistence import atomic_json
 from simulation.research_messages import CORPUS_METADATA, STIMULI
 
 
-def design(n_seeds=12, repeats=2, n_agents=50, ticks=12,
+def design(n_seeds=24, repeats=2, n_agents=50, ticks=12,
            model="qwen3:4b-instruct-2507-q4_K_M", pilot=False):
     """Um controle compartilhado por bloco, com todos os contrastes antes do próximo."""
     if min(n_seeds, repeats) < 1 or ticks < 3:
@@ -102,11 +102,18 @@ def export_analysis(directory, records, planned, status):
     })
 
 
+def shard(value):
+    index, count = (int(part) for part in value.split("/"))
+    if not 0 <= index < count:
+        raise ValueError(value)
+    return [index, count]
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--hours", type=float, default=1)
-    parser.add_argument("--seed-count", type=int, default=12)
+    parser.add_argument("--seed-count", type=int, default=24)
     parser.add_argument("--repeats", type=int, default=2)
     parser.add_argument("--agents", type=int, default=50)
     parser.add_argument("--ticks", type=int, default=12)
@@ -115,6 +122,8 @@ def main():
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--retry-incomplete", action="store_true", help="Retenta falhas/interrupções preservando o histórico")
+    parser.add_argument("--shard", type=shard, metavar="I/N",
+                        help="Roda só as sementes de cenário com seed_index %% N == I, em pasta própria")
     args = parser.parse_args()
     if args.hours <= 0:
         parser.error("Orçamento de horas deve ser positivo.")
@@ -122,11 +131,19 @@ def main():
         parser.error("Use --retry-incomplete somente com --resume.")
     load_dotenv()
     cases = design(args.seed_count, args.repeats, args.agents, args.ticks, args.model, args.pilot)
+    if args.shard:
+        # Fatia por semente de cenário: cada bloco pareado fica inteiro em uma máquina.
+        cases = [case for case in cases if case["seed_index"] % args.shard[1] == args.shard[0]]
+        if not cases:
+            parser.error("Fatia sem casos.")
     print(json.dumps({"cases": len(cases), "families": Counter(c["family"] for c in cases),
-                      "hours": args.hours, "pilot_excluded_from_main": args.pilot}, ensure_ascii=False), flush=True)
+                      "hours": args.hours, "shard": args.shard,
+                      "pilot_excluded_from_main": args.pilot}, ensure_ascii=False), flush=True)
     if args.dry_run:
         return
-    corpus = {**CORPUS_METADATA, "stimuli": STIMULI, "pilot": args.pilot}
+    corpus = {**CORPUS_METADATA, "stimuli": STIMULI, "pilot": args.pilot, "shard": args.shard,
+              "design": {"seed_count": args.seed_count, "repeats": args.repeats, "agents": args.agents,
+                         "ticks": args.ticks, "model": args.model}}
     corpus_path = args.output / "corpus.json"
     if corpus_path.exists():
         if not args.resume or json.loads(corpus_path.read_text(encoding="utf-8")) != corpus:
