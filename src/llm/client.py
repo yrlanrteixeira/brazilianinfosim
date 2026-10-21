@@ -111,6 +111,10 @@ class InvalidLLMResponse(ValueError):
 DEFAULT_TEMPERATURE = 0.3
 
 
+# Abreviações que o modelo repete mesmo com outra semente; só existe uma ação com comentário.
+LABEL_ALIASES = {"COMENTARIO": Decision.MUTATE, "COMENTAR": Decision.MUTATE}
+
+
 def parse_decision(bruto: str) -> Optional[Decision]:
     """
     Converte o label do modelo em Decision, tolerando typo (`QUESTRONAR`).
@@ -122,6 +126,8 @@ def parse_decision(bruto: str) -> Optional[Decision]:
     validos = {d.value for d in Decision}
     if normalizado in validos:
         return Decision(normalizado)
+    if normalizado in LABEL_ALIASES:
+        return LABEL_ALIASES[normalizado]
 
     import difflib
     candidatos = difflib.get_close_matches(normalizado, validos, n=1, cutoff=0.85)

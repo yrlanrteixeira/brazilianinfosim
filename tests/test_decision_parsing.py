@@ -70,12 +70,22 @@ def _decide(client):
     ("compartilhar", Decision.SHARE),
     ("  IGNORAR  ", Decision.IGNORE),
     ("COMPARTILHAR_COM_COMENTARIO", Decision.MUTATE),
+    ("COMENTARIO", Decision.MUTATE),
+    ("comentar", Decision.MUTATE),
 ])
 def test_noisy_label_is_recovered(monkeypatch, written, expected):
     client, _ = _client(monkeypatch, [_raw(written, "texto")])
     decision, _, refused = _decide(client)
     assert decision == expected
     assert refused is False
+
+
+def test_alias_is_counted_as_normalized_label(monkeypatch):
+    """O modelo repete COMENTARIO mesmo com outra semente; a abreviação fica registrada."""
+    client, fake = _client(monkeypatch, [_raw("COMENTARIO", "texto")], seed=71000)
+    assert _decide(client)[0] == Decision.MUTATE
+    assert client.stats["normalized_labels"] == 1 and client.stats["parse_errors"] == 0
+    assert fake.calls == 1
 
 
 ATTEMPTS = INVALID_RESPONSE_RETRIES + 1
@@ -104,11 +114,10 @@ def test_malformed_json_is_still_a_parse_error(monkeypatch):
 
 
 def test_invalid_label_is_asked_again_with_another_seed(monkeypatch):
-    """Uma abreviação isolada não descarta a execução inteira."""
-    client, fake = _client(monkeypatch, [_raw("COMENTARIO", "texto"), _raw("COMPARTILHAR_COM_COMENTARIO", "texto")],
-                           seed=71000)
+    """Uma resposta inválida isolada não descarta a execução inteira."""
+    client, fake = _client(monkeypatch, [_raw("REFUTAR", ""), _raw("REFUTAR", "texto")], seed=71000)
     decision, content, refused = _decide(client)
-    assert (decision, content, refused) == (Decision.MUTATE, "texto", False)
+    assert (decision, content, refused) == (Decision.REFUTE, "texto", False)
     assert fake.seeds == [None, 71000 + RETRY_SEED_STEP]
     assert [event["seed"] for event in client.audit_log] == [71000, 71000 + RETRY_SEED_STEP]
     assert "invalid_response" in client.audit_log[0] and "invalid_response" not in client.audit_log[1]
