@@ -168,7 +168,7 @@ def test_research_pipeline_saves_auditable_data_without_real_llm(tmp_path, monke
                   "rationale": "Classificação sintética para verificar a preservação."}
     template = output / "review_template.json"
     template.write_text(json.dumps({key: annotation}), encoding="utf-8")
-    result = analyze(tmp_path, tmp_path / "review")
+    result = analyze([tmp_path], tmp_path / "review")
     assert result["completed_runs"] == 4 and result["fully_classified_runs"] == 0
     assert result["unique_texts"] > 1
     updated = json.loads(template.read_text(encoding="utf-8"))
@@ -181,3 +181,62 @@ def test_research_pipeline_saves_auditable_data_without_real_llm(tmp_path, monke
             digest.update(name.encode())
             digest.update(archive.read(name))
     assert digest.hexdigest() == identity["source_sha256"]
+
+
+def test_shards_split_the_grid_by_scenario_seed(monkeypatch, capsys):
+    planned = []
+    for index in range(4):
+        monkeypatch.setattr(sys, "argv", ["run_research.py", "--output", "unused", "--dry-run", "--shard", f"{index}/4"])
+        research.main()
+        planned.append(json.loads(capsys.readouterr().out)["cases"])
+    assert planned == [528] * 4 and sum(planned) == len(research.design())
+    monkeypatch.setattr(sys, "argv", ["run_research.py", "--output", "unused", "--dry-run", "--shard", "4/4"])
+    with pytest.raises(SystemExit):
+        research.main()
+
+
+def write_campaign(directory, case_ids, shard, source="code-a", digest="model-a", agents=50):
+    from simulation.persistence import atomic_json
+
+    atomic_json(directory / "campaign.json", {
+        "identity": {"source_sha256": source, "python": "3.x", "settings": {"cases": [{"id": i} for i in case_ids]}},
+        "model_metadata": {"model": {"digest": digest}, "server": {"version": "0.0"}}})
+    atomic_json(directory / "corpus.json", {"pilot": False, "shard": shard, "design": {"agents": agents}})
+    for case_id in case_ids:
+        atomic_json(directory / "attempts" / f"{case_id}.json", {"id": case_id, "status": "success"})
+    return directory
+
+
+def test_load_campaigns_joins_distinct_shards(tmp_path):
+    from simulation.persistence import load_campaigns
+
+    first = write_campaign(tmp_path / "local", ["a", "b"], [0, 2])
+    second = write_campaign(tmp_path / "colab", ["c"], [1, 2])
+    sources, attempts, plan = load_campaigns([first, second])
+    assert [s["shard"] for s in sources] == [[0, 2], [1, 2]]
+    assert sorted(record["id"] for _, record in attempts) == ["a", "b", "c"] and len(plan) == 3
+
+
+@pytest.mark.parametrize("other", [
+    {"case_ids": ["c"], "shard": [0, 2]},
+    {"case_ids": ["c"], "shard": None},
+    {"case_ids": ["c"], "shard": [1, 3]},
+    {"case_ids": ["c"], "shard": [1, 2], "source": "code-b"},
+    {"case_ids": ["c"], "shard": [1, 2], "digest": "model-b"},
+    {"case_ids": ["c"], "shard": [1, 2], "agents": 20},
+    {"case_ids": ["b"], "shard": [1, 2]},
+])
+def test_load_campaigns_refuses_mixing(tmp_path, other):
+    from simulation.persistence import load_campaigns
+
+    first = write_campaign(tmp_path / "local", ["a", "b"], [0, 2])
+    second = write_campaign(tmp_path / "colab", **other)
+    with pytest.raises(ValueError):
+        load_campaigns([first, second])
+
+
+def test_source_digest_ignores_line_endings():
+    from simulation.persistence import source_digest, source_files
+
+    assert all(b"\r\n" not in raw for _, raw in source_files())
+    assert source_digest([("a.py", b"x\n")]) != source_digest([("a.py", b"x\r\n")])

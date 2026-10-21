@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from metrics.content_review import content_key, review_exposure
 from network.topology import Topology, build_network, match_edge_count
 from simulation.baseline import run_epidemic
-from simulation.persistence import atomic_json
+from simulation.persistence import atomic_json, load_campaigns
 
 
 def cascade_features(first_times):
@@ -82,13 +82,13 @@ def empirical_features(path):
                       "last_epoch": max(timestamps), "timestamp_unit": "milliseconds in source; seconds in duration"}
 
 
-def llm_features(campaign, annotations, n_agents, ticks):
+def llm_features(campaigns, annotations, n_agents, ticks):
     rows, counts = [], defaultdict(int)
-    corpus = json.loads((campaign / "corpus.json").read_text(encoding="utf-8"))
+    corpus = json.loads((campaigns[0] / "corpus.json").read_text(encoding="utf-8"))
     if corpus.get("pilot"):
         return [], {"pilot_excluded": True}
-    for path in sorted((campaign / "attempts").glob("*.json")):
-        record = json.loads(path.read_text(encoding="utf-8"))
+    _, attempts, _ = load_campaigns(campaigns)
+    for campaign, record in attempts:
         if record["status"] != "success" or record["family"] != "reference":
             continue
         if (record["config"]["n_agents"], record["config"]["max_ticks"]) != (n_agents, ticks):
@@ -119,7 +119,7 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--agents", type=int, default=50)
     parser.add_argument("--ticks", type=int, default=12)
-    parser.add_argument("--campaign", type=Path)
+    parser.add_argument("--campaign", type=Path, nargs="+", help="Uma pasta ou as fatias (--shard) da mesma campanha")
     parser.add_argument("--annotations", type=Path)
     args = parser.parse_args()
     if args.agents < 7 or args.ticks < 1:

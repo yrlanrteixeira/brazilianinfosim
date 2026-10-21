@@ -13,7 +13,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from metrics.content_review import content_key, review_exposure, update_review_template
-from simulation.persistence import atomic_json
+from simulation.persistence import atomic_json, load_campaigns
 
 
 def write_csv(path, rows):
@@ -86,14 +86,16 @@ def cluster_summary(rows, metric, iterations=2000):
     return result
 
 
-def analyze(campaign, output, annotations_path=None):
+def analyze(campaigns, output, annotations_path=None):
     annotations_bytes = annotations_path.read_bytes() if annotations_path else None
     annotations = json.loads(annotations_bytes) if annotations_bytes else {}
-    records = [json.loads(path.read_text(encoding="utf-8")) for path in sorted((campaign / "attempts").glob("*.json"))]
+    sources, attempts, plan = load_campaigns(campaigns)
+    records = [record for _, record in attempts]
     good = {r["id"]: r for r in records if r["status"] == "success"}
+    folders = {record["id"]: directory for directory, record in attempts if record["status"] == "success"}
     rows, inventory, profiles, provenance = {}, {}, Counter(), []
     for key, record in good.items():
-        raw = (campaign / "results" / f"{key}.json").read_bytes()
+        raw = (folders[key] / "results" / f"{key}.json").read_bytes()
         payload = json.loads(raw)
         metrics, texts = run_metrics(payload, annotations)
         inventory.update(texts)
@@ -131,7 +133,6 @@ def analyze(campaign, output, annotations_path=None):
                 "literal_reach": cluster_summary(group, "delta_literal_reach_pct")}
                for key, group in sorted(grouped.items())]
     containment = []
-    plan = json.loads((campaign / "campaign.json").read_text(encoding="utf-8"))["identity"]["settings"]["cases"]
     for cutoff in (5, 10, 20):
         for fraction in (0, 0.2, 0.4, 0.6, 0.8, 1):
             selected = [row for row in rows.values() if row["family"] in {"reference", "skeptics"}
@@ -168,7 +169,8 @@ def analyze(campaign, output, annotations_path=None):
               "fully_classified_runs": sum(r["classification_complete"] for r in rows.values()),
               "unique_texts": len(inventory), "effects": effects,
               "containment_thresholds": thresholds,
-              "archived_attempts": len(list((campaign / "attempt_history").glob("*/*.json"))),
+              "archived_attempts": sum(len(list(Path(s["path"], "attempt_history").glob("*/*.json"))) for s in sources),
+              "campaigns": sources,
               "factual_accuracy": "not_assessed", "independent_human_review": "not_assessed",
               "source_results": provenance,
               "analysis_sha256": sha256(Path(__file__).read_bytes()).hexdigest(),
@@ -180,11 +182,11 @@ def analyze(campaign, output, annotations_path=None):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("campaign", type=Path)
+    parser.add_argument("campaigns", type=Path, nargs="+", help="Uma pasta ou as fatias (--shard) da mesma campanha")
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--annotations", type=Path)
     args = parser.parse_args()
-    result = analyze(args.campaign, args.output, args.annotations)
+    result = analyze(args.campaigns, args.output, args.annotations)
     print(json.dumps({key: result[key] for key in ("completed_runs", "fully_classified_runs", "unique_texts")}))
 
 

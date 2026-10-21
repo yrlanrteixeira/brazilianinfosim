@@ -36,6 +36,7 @@ brazilianinfosim/
 │   ├── run_content_review.py # Revisão por conteúdo de uma campanha
 │   └── legacy/               # Runners das campanhas históricas (expandida, assuntos, suplementar, mutação)
 ├── analysis/                 # Análise da campanha de pesquisa e referência externa
+├── notebooks/                # Execução de fatias da campanha no Colab
 ├── tests/                    # Suíte pytest, sem chamadas reais a LLM
 ├── data/outputs/             # Resultados, gravações e CSVs (fora do git)
 ├── app.py                    # Replay visual (solara run app.py)
@@ -265,7 +266,24 @@ com `--retry-incomplete`, e a tentativa anterior fica em `attempt_history`.
 O manifesto recusa retomar com outro código, modelo ou desenho, e
 `source_snapshot.zip` preserva o código do início da campanha.
 
-Os scripts de análise ficam em `analysis/`:
+### Em várias máquinas
+
+`--shard I/N` divide a grade pelas sementes de cenário: cada fatia contém blocos
+pareados completos e as três topologias. Cada fatia roda em uma única máquina,
+em pasta própria, com o mesmo commit e o mesmo digest do modelo.
+
+```bash
+python scripts/run_research.py --output data/outputs/tcc2/conclusao-shard-0-de-4 --shard 0/4 --hours 6
+```
+
+[notebooks/campanha_colab.ipynb](notebooks/campanha_colab.ipynb) roda outra fatia
+no Colab, gravando no Google Drive, e confere o digest do modelo antes de começar.
+Uma máquina que termina pode assumir uma fatia ainda não iniciada. Os scripts de
+análise recebem as pastas das fatias juntas e recusam misturar código, modelo,
+desenho ou fatias repetidas. O `analysis.json` registra em `campaigns` a pasta,
+a fatia, o Python e a versão do Ollama de cada máquina.
+
+Os scripts de análise ficam em `analysis/`; com fatias, passe todas as pastas no lugar de uma:
 
 ```bash
 # Template de revisão e CSVs; repita com --annotations após anotar os textos.
