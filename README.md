@@ -276,8 +276,9 @@ em pasta própria, com o mesmo commit e o mesmo digest do modelo.
 python scripts/run_research.py --output data/outputs/tcc2/conclusao-shard-0-de-4 --shard 0/4 --hours 6
 ```
 
-[notebooks/campanha_colab.ipynb](notebooks/campanha_colab.ipynb) roda outra fatia
-no Colab, gravando no Google Drive, e confere o digest do modelo antes de começar.
+[notebooks/campanha_colab.ipynb](notebooks/campanha_colab.ipynb) roda várias fatias
+em paralelo no Colab, com um único Ollama atendendo as requisições, grava no Google
+Drive e confere o digest do modelo antes de começar.
 Uma máquina que termina pode assumir uma fatia ainda não iniciada. Os scripts de
 análise recebem as pastas das fatias juntas e recusam misturar código, modelo,
 desenho ou fatias repetidas. O `analysis.json` registra em `campaigns` a pasta,
