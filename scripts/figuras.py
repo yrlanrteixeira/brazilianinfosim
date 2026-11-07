@@ -158,7 +158,9 @@ def figura_contrastes(linhas: list[dict], destino: Path) -> Path:
     ax.set_axisbelow(True)
     ax.plot([], [], "o-", color=MARCA, label=ROTULO_MARCA, markersize=5)
     ax.plot([], [], "s-", color=PROFUNDIDADE, label=ROTULO_PROFUNDIDADE, markersize=5)
-    ax.legend(frameon=False, loc="lower left", ncol=1)
+    # Fora da área de dados: com 22 condições, legenda interna cobriria linhas.
+    ax.legend(frameon=False, ncol=2, loc="lower center",
+              bbox_to_anchor=(0.5, 1.01), borderaxespad=0)
     caminho = destino / "fig_criterios_contrastes.png"
     fig.savefig(caminho)
     plt.close(fig)
