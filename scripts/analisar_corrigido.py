@@ -41,7 +41,9 @@ def cluster_totals(rows: list[dict], value, cluster: str = CLUSTER) -> list[tupl
 
 
 def clustered_ci(totals: list[tuple[float, int]], seed: int = 0,
-                 resamples: int = RESAMPLES) -> tuple[float, float]:
+                 resamples: int = RESAMPLES, level: float = 0.95) -> tuple[float, float]:
+    """Nível acima de 95% serve ao ajuste de multiplicidade. A cauda fica fina:
+    em 0,9977 sobram cerca de onze reamostragens de cada lado."""
     if len(totals) < 2:
         return (float("nan"), float("nan"))
     rng = random.Random(seed)
@@ -55,8 +57,9 @@ def clustered_ci(totals: list[tuple[float, int]], seed: int = 0,
             contagem += n
         draws.append(soma / contagem if contagem else 0.0)
     draws.sort()
-    return (round(draws[int(0.025 * resamples)], 2),
-            round(draws[int(0.975 * resamples) - 1], 2))
+    baixo = max(0, int((1 - level) / 2 * resamples))
+    alto = min(resamples - 1, int((1 + level) / 2 * resamples) - 1)
+    return (round(draws[baixo], 2), round(draws[alto], 2))
 
 
 def summarize(rows: list[dict], value, label: str, cluster: str = CLUSTER) -> dict:

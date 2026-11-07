@@ -13,7 +13,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
-from contrastes import applied_only, escape, groups, load, num, table, to_tex
+from contrastes import (
+    applied_only, bonferroni_level, escape, groups, load, num, table, to_tex,
+)
 
 
 def _pair(family="intervention", condition="remove_hubs_t0", seed="1",
@@ -61,6 +63,21 @@ def test_the_bootstrap_groups_by_structural_seed():
     mesma = table([_pair(seed="7", estrito=-5.0), _pair(seed="7", estrito=-15.0)])
     assert mesma[0]["n"] == 2
     assert mesma[0]["seeds"] == 1
+
+
+def test_bonferroni_raises_the_level_by_the_number_of_conditions():
+    assert bonferroni_level(1) == 0.95
+    assert round(bonferroni_level(22), 5) == round(1 - 0.05 / 22, 5)
+    assert bonferroni_level(22) > bonferroni_level(2)
+
+
+def test_the_adjusted_interval_is_never_narrower_than_the_unadjusted():
+    """Ajustar por multiplicidade alarga o intervalo; estreitar seria o erro."""
+    pares = [_pair(seed=str(i), estrito=float(i - 10)) for i in range(20)]
+    largo = table(pares, level=bonferroni_level(22))[0]
+    estreito = table(pares, level=0.95)[0]
+    assert largo["estrito_ic95_baixo"] <= estreito["estrito_ic95_baixo"]
+    assert largo["estrito_ic95_alto"] >= estreito["estrito_ic95_alto"]
 
 
 def test_both_metrics_appear_side_by_side():

@@ -57,20 +57,28 @@ def groups(pairs: list[dict]) -> dict[tuple[str, str], list[dict]]:
     return agrupado
 
 
-def effect(grupo: list[dict], column: str) -> tuple[float, float, float, float]:
+def effect(grupo: list[dict], column: str,
+           level: float = 0.95) -> tuple[float, float, float, float]:
     valores = [float(p[column]) for p in grupo]
-    baixo, alto = clustered_ci(cluster_totals(grupo, lambda p: float(p[column]), CLUSTER))
+    baixo, alto = clustered_ci(cluster_totals(grupo, lambda p: float(p[column]), CLUSTER),
+                               level=level)
     return (round(sum(valores) / len(valores), 2), round(median(valores), 2), baixo, alto)
 
 
-def table(pairs: list[dict]) -> list[dict]:
+def bonferroni_level(condicoes: int, alfa: float = 0.05) -> float:
+    """Intervalo de um teste entre vários: o nível sobe para o alfa dividido
+    pelo número de condições declaradas."""
+    return 1 - alfa / condicoes
+
+
+def table(pairs: list[dict], level: float = 0.95) -> list[dict]:
     lines = []
     for (family, condition), grupo in sorted(groups(pairs).items()):
         usados = applied_only(family, grupo)
         if not usados:
             continue
-        a_media, _, a_baixo, a_alto = effect(usados, ANTIGO)
-        e_media, e_mediana, e_baixo, e_alto = effect(usados, ESTRITO)
+        a_media, _, a_baixo, a_alto = effect(usados, ANTIGO, level)
+        e_media, e_mediana, e_baixo, e_alto = effect(usados, ESTRITO, level)
         lines.append({
             "familia": family, "condicao": condition,
             "n": len(usados), "descartados": len(grupo) - len(usados),
@@ -120,6 +128,8 @@ def to_tex(lines: list[dict]) -> str:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("campaign", type=Path, help="pasta da campanha ou de um shard")
+    parser.add_argument("--bonferroni", action="store_true",
+                        help="ajusta o nível pelo número de condições declaradas")
     args = parser.parse_args()
 
     pairs = load(args.campaign)
@@ -127,7 +137,9 @@ def main() -> None:
         raise SystemExit(f"Nenhum paired_effects_corrigido.csv em {args.campaign}. "
                          "Rode recompute_lineage.py antes.")
 
-    lines = table(pairs)
+    condicoes = len(table(pairs))
+    level = bonferroni_level(condicoes) if args.bonferroni else 0.95
+    lines = table(pairs, level)
     saida = args.campaign / "tabelas"
     saida.mkdir(exist_ok=True)
     with (saida / "contrastes.csv").open("w", newline="", encoding="utf-8") as out:
