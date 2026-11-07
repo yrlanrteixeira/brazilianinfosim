@@ -109,9 +109,30 @@ def test_controls_are_the_rows_without_intervention():
     assert len(controls(rows)) == 1
 
 
-def test_reach_table_falls_back_to_all_rows_when_there_is_no_control():
+def test_the_named_control_condition_wins_over_the_none_intervention():
+    """A campanha grava `none` em toda condição sem intervenção de rede. Só a
+    condição de referência é controle."""
+    rows = [dict(_row(intervention="none"), condition="control"),
+            dict(_row(intervention="none"), condition="fraction_0.4"),
+            dict(_row(intervention="none"), condition="cetico")]
+    assert [r["condition"] for r in controls(rows)] == ["control"]
+
+
+def test_without_a_named_control_it_falls_back_to_no_intervention():
+    rows = [dict(_row(intervention="none"), condition="cetico"),
+            dict(_row(intervention="remove_hubs"), condition="remove_hubs_t0")]
+    assert len(controls(rows)) == 1
+
+
+def test_reach_table_falls_back_to_all_rows_and_says_so():
     linhas = tabela_alcances([_row(intervention="factcheckers_hub")])
     assert linhas[0]["n"] == 1
+    assert linhas[0]["escopo"] == "todas as execucoes"
+
+
+def test_reach_table_marks_when_it_describes_the_controls():
+    linhas = tabela_alcances([dict(_row(intervention="none"), condition="control")])
+    assert linhas[0]["escopo"] == "controles"
 
 
 def test_artifact_table_has_both_primary_outcomes():

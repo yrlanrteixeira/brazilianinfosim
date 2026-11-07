@@ -75,6 +75,16 @@ def recompute(payload: dict, removed: set[int]) -> dict:
     }
 
 
+def load_result(path: Path) -> dict:
+    """Cópia interrompida deixa JSON truncado, que falha com erro opaco. Parar
+    nomeando o arquivo é melhor do que seguir com a campanha pela metade."""
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError) as erro:
+        raise SystemExit(f"Resultado ilegível em {path}: {erro}. "
+                         "A cópia da campanha provavelmente está incompleta.")
+
+
 def removed_nodes(row: dict) -> set[int]:
     if not row.get("n_removed") or float(row["n_removed"]) == 0:
         return set()
@@ -97,7 +107,7 @@ def process(folder: Path) -> dict:
         path = folder / "results" / f"{row[identifier]}.json"
         extra = {}
         if path.exists():
-            extra = recompute(json.loads(path.read_text(encoding="utf-8")), removed_nodes(row))
+            extra = recompute(load_result(path), removed_nodes(row))
         if not extra:
             unaudited.append(row[identifier])
         elif abs(extra["reach_legacy_pct"] - float(row["final_reach_pct"])) > 0.01:

@@ -24,7 +24,7 @@ import json
 import random
 from pathlib import Path
 
-from recompute_lineage import depth_by_content, id_column
+from recompute_lineage import depth_by_content, id_column, load_result
 
 ESTRATOS = ("boato", "correcao", "ambiguo")
 TAMANHOS = {"boato": 60, "correcao": 60, "ambiguo": 180}
@@ -99,7 +99,7 @@ def collect(folder: Path) -> dict[tuple[str, bool], dict]:
         path = folder / "results" / f"{row[identifier]}.json"
         if not path.exists():
             continue
-        payload = json.loads(path.read_text(encoding="utf-8"))
+        payload = load_result(path)
         subject = row.get("subject") or row.get("stimulus_id") or ""
         merge(pool, published(payload, row[identifier], subject))
     return pool

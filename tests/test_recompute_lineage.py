@@ -13,7 +13,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
-from recompute_lineage import depth_by_content, exposures, recompute, removed_nodes
+import pytest
+
+from recompute_lineage import (
+    depth_by_content, exposures, load_result, recompute, removed_nodes,
+)
 
 RUMOR = "URGENTE: repasse isso agora"
 CORRECAO = "[REFUTAÇÃO] isso é falso"
@@ -92,3 +96,17 @@ def test_results_without_audit_are_reported_not_guessed():
 def test_removed_nodes_only_when_the_intervention_removed():
     assert removed_nodes({"n_removed": "0", "intervention_nodes": "1,2"}) == set()
     assert removed_nodes({"n_removed": "2", "intervention_nodes": "1,2"}) == {1, 2}
+
+
+def test_a_truncated_result_names_the_file_instead_of_failing_opaquely(tmp_path):
+    """Cópia interrompida deixa JSON pela metade, e o erro cru não diz onde."""
+    ruim = tmp_path / "meio-copiado.json"
+    ruim.write_text('{"summary": {"n_age', encoding="utf-8")
+    with pytest.raises(SystemExit, match="meio-copiado.json"):
+        load_result(ruim)
+
+
+def test_a_complete_result_loads_normally(tmp_path):
+    bom = tmp_path / "completo.json"
+    bom.write_text('{"summary": {"n_agents": 10}}', encoding="utf-8")
+    assert load_result(bom)["summary"]["n_agents"] == 10

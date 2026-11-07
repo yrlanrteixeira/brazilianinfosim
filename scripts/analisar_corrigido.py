@@ -109,8 +109,19 @@ def load(campaign: Path) -> list[dict]:
     return [row for row in rows if row.get("reach_strict_pct")]
 
 
+CONTROL_CONDITIONS = {"control", "controle"}
+NO_INTERVENTION = {"", "none"}
+
+
 def controls(rows: list[dict]) -> list[dict]:
-    return [row for row in rows if not row.get("intervention")]
+    """Controle é a condição de referência do pareamento. As demais condições
+    sem intervenção também gravam `none`, e não são controle."""
+    named = [row for row in rows
+             if row.get("condition", "").strip().lower() in CONTROL_CONDITIONS]
+    if named:
+        return named
+    return [row for row in rows
+            if row.get("intervention", "").strip().lower() in NO_INTERVENTION]
 
 
 def write(folder: Path, name: str, lines: list[dict]) -> Path:
@@ -123,8 +134,12 @@ def write(folder: Path, name: str, lines: list[dict]) -> Path:
 
 
 def tabela_alcances(rows: list[dict]) -> list[dict]:
-    base = controls(rows) or rows
-    return [summarize(base, pct(column), label) for column, label in ALCANCES]
+    """O escopo vai na tabela: sem controle identificado, a linha descreve a
+    campanha inteira, e isso não pode ficar implícito."""
+    base = controls(rows)
+    escopo = "controles" if base else "todas as execucoes"
+    return [{**summarize(base or rows, pct(column), label), "escopo": escopo}
+            for column, label in ALCANCES]
 
 
 def tabela_artefato(rows: list[dict]) -> list[dict]:
