@@ -100,12 +100,14 @@ def num(valor: float) -> str:
     return "--" if valor != valor else f"{valor:.2f}"
 
 
-def to_tex(lines: list[dict]) -> str:
+def to_tex(lines: list[dict], level: float = 0.95) -> str:
     out = [
         r"% Gerado por scripts/contrastes.py. Nao editar a mao.",
+        f"% Intervalos de {level * 100:.2f}%, bootstrap agrupado pela seed estrutural.",
         r"\begin{tabular}{llrrrr}",
         r"\toprule",
-        r"Família & Condição & $n$ & Seeds & Antigo (p.p.) & Estrito (p.p.) \\",
+        f"Família & Condição & $n$ & Seeds & "
+        f"Antigo (p.p.) & Estrito (p.p.) \\\\",
         r"\midrule",
     ]
     anterior = None
@@ -146,13 +148,13 @@ def main() -> None:
         writer = csv.DictWriter(out, fieldnames=FIELDS)
         writer.writeheader()
         writer.writerows(lines)
-    (saida / "contrastes.tex").write_text(to_tex(lines), encoding="utf-8")
+    (saida / "contrastes.tex").write_text(to_tex(lines, level), encoding="utf-8")
 
     print(f"{saida / 'contrastes.csv'}")
     print(f"{saida / 'contrastes.tex'}")
-    print(f"\n{len(pairs)} pares, {len(lines)} condições. "
-          f"Bonferroni sobre {len(lines)} condições: alfa de 0,05 vira "
-          f"{0.05 / len(lines):.5f}.")
+    ajuste = "com Bonferroni" if args.bonferroni else "sem ajuste de multiplicidade"
+    print(f"\n{len(pairs)} pares, {len(lines)} condições, "
+          f"intervalos de {level * 100:.2f}% {ajuste}.")
     print(f"{'familia':<14}{'condicao':<30}{'n':>5}{'desc':>6}"
           f"{'antigo':>10}{'estrito':>10}")
     for linha in lines:

@@ -106,6 +106,12 @@ def test_the_tex_table_is_closed_and_escaped():
     assert r"\_t0}" in saida, "a condição vai em texttt escapado"
 
 
+def test_the_tex_table_states_its_own_interval_level():
+    """Tabela solta no artigo tem que dizer de que nível é o intervalo."""
+    saida = to_tex(table([_pair(seed="1"), _pair(seed="2")]), level=bonferroni_level(22))
+    assert "99.77%" in saida
+
+
 def test_a_family_change_draws_a_rule():
     """Um do cabeçalho, mais um por troca de família."""
     pares = [_pair(seed="1"), _pair(seed="2"),
