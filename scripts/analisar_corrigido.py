@@ -152,15 +152,21 @@ def tabela_artefato(rows: list[dict]) -> list[dict]:
     ]
 
 
-def tabela_por_estimulo(rows: list[dict]) -> list[dict]:
+def tabela_por_grupo(rows: list[dict], chave: str, filtro=None) -> list[dict]:
+    """Uma linha por valor da coluna, nas duas métricas mais a proporção presa
+    ao emissor. Serve para estímulo, topologia e fração de céticos."""
+    alvo = [row for row in rows if filtro is None or filtro(row)]
     lines = []
-    for stimulus in sorted({row["stimulus_id"] for row in rows}):
-        grupo = [row for row in rows if row["stimulus_id"] == stimulus]
-        for column, label in (("reach_strict_pct", "estrito"), ("reach_legacy_pct", "antigo")):
-            linha = summarize(grupo, pct(column), f"{stimulus}: alcance {label}")
-            lines.append(linha)
-        lines.append(summarize(grupo, so_emissor, f"{stimulus}: só o emissor"))
+    for valor in sorted({row[chave] for row in alvo}):
+        grupo = [row for row in alvo if row[chave] == valor]
+        for column, label in (("reach_strict_pct", "estrito"), ("reach_legacy_pct", "marca")):
+            lines.append(summarize(grupo, pct(column), f"{valor}: alcance {label}"))
+        lines.append(summarize(grupo, so_emissor, f"{valor}: só o emissor"))
     return lines
+
+
+def tabela_por_estimulo(rows: list[dict]) -> list[dict]:
+    return tabela_por_grupo(rows, "stimulus_id")
 
 
 def main() -> None:
@@ -178,10 +184,19 @@ def main() -> None:
 
     saida = args.campaign / "tabelas"
     saida.mkdir(exist_ok=True)
-    for name, lines in (("alcances.csv", tabela_alcances(rows)),
-                        ("artefato.csv", tabela_artefato(rows)),
-                        ("por_estimulo.csv", tabela_por_estimulo(rows))):
-        print(f"{write(saida, name, lines)}")
+    tabelas = [
+        ("alcances.csv", tabela_alcances(rows)),
+        ("artefato.csv", tabela_artefato(rows)),
+        ("por_estimulo.csv", tabela_por_estimulo(rows)),
+        # Topologia sobre a campanha inteira, não só a família que a varia:
+        # toda execução tem uma, e o recorte da família perde a maior parte.
+        ("por_topologia.csv", tabela_por_grupo(rows, "topology")),
+        ("por_ceticos.csv", tabela_por_grupo(
+            rows, "condition", lambda row: row["family"] == "skeptics")),
+    ]
+    for name, lines in tabelas:
+        if lines:
+            print(f"{write(saida, name, lines)}")
 
     print(f"\n{len(rows)} execuções, {len(controls(rows))} controles, "
           f"{len({row[CLUSTER] for row in rows})} seeds estruturais")

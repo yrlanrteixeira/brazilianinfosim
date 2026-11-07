@@ -19,7 +19,7 @@ import pytest
 
 from analisar_corrigido import (
     artefato, cluster_totals, clustered_ci, conferir_total, controls, load,
-    so_emissor, summarize, tabela_alcances, tabela_artefato,
+    so_emissor, summarize, tabela_alcances, tabela_artefato, tabela_por_grupo,
 )
 
 
@@ -139,6 +139,25 @@ def test_artifact_table_has_both_primary_outcomes():
     linhas = tabela_artefato([_row(seed="a"), _row(seed="b")])
     assert len(linhas) == 2
     assert linhas[0]["media"] == 38.0
+
+
+def test_grouping_covers_every_value_in_three_measures():
+    rows = [dict(_row(), topology=t) for t in ("erdos_renyi", "watts_strogatz")]
+    linhas = tabela_por_grupo(rows, "topology")
+    assert len(linhas) == 6, "duas topologias vezes estrito, marca e só o emissor"
+    assert any("erdos_renyi: alcance estrito" == l["medida"] for l in linhas)
+
+
+def test_the_filter_restricts_the_grouping_to_one_family():
+    """A fração de céticos só faz sentido dentro da família que a varia."""
+    rows = [dict(_row(), family="skeptics", condition="fraction_1"),
+            dict(_row(), family="topology", condition="erdos_renyi")]
+    linhas = tabela_por_grupo(rows, "condition", lambda r: r["family"] == "skeptics")
+    assert {l["medida"].split(":")[0] for l in linhas} == {"fraction_1"}
+
+
+def test_grouping_an_empty_selection_yields_nothing():
+    assert tabela_por_grupo([_row()], "topology", lambda r: False) == []
 
 
 def test_load_skips_runs_the_recompute_could_not_measure(tmp_path):
