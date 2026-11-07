@@ -12,34 +12,40 @@ início.
 
 ## T1. Levar as correções para o código que roda a campanha
 
-**Por que existe.** As três correções estão no branch `fix/medicao-de-linhagem`,
-que saiu de um commit de setembro e não contém o código de pesquisa. O código
-que gerou os dados está em `feat/campanha-em-fatias`, que nem na `main` foi
-integrado. Hoje as correções não alcançam a campanha.
+**Por que existe.** O branch `fix/medicao-de-linhagem` saiu de um commit de
+setembro e está 37 commits atrás da `main`. A `main` já integrou todo o trabalho
+de pesquisa, moveu os runners para `scripts/` e tem o `content_review.py`. As
+correções de medição estão só no branch. Nenhum dos dois lados é suficiente
+sozinho.
 
-**Entrada.** Os dois branches e os três arquivos de teste das correções.
+**Entrada.** O branch e a `main` atualizada. Buscar antes com `git fetch origin`:
+é fácil analisar contra uma `main` local velha e chegar a conclusão errada.
 
 **Passos.**
 
-1. Criar o branch de trabalho a partir de `feat/campanha-em-fatias`.
-2. Copiar para ele, sem adaptar nada ainda, `tests/test_lineage_stance.py`,
-   `tests/test_prompt_framing.py` e `tests/test_recompute_lineage.py`.
-3. Rodar a suíte e confirmar que os novos testes falham. Essa falha é o contrato
-   do porte.
-4. Portar à mão as mudanças de `src/agents/agent.py`, `src/llm/client.py`,
-   `src/simulation/engine.py` e `src/metrics/analysis.py`. Não usar cherry-pick:
-   os arquivos divergiram demais, e `engine.py` tem no branch da campanha mais
-   de cem linhas que o branch atual não tem.
-5. Copiar `recompute_lineage.py`, `analisar_corrigido.py` e `amostrar_textos.py`.
-6. Rodar a suíte inteira.
+1. `git merge origin/main` dentro do branch. São 15 arquivos em conflito.
+2. Resolver primeiro os fáceis: `.gitignore`, `README.md`, e os dois
+   modify/delete de `run_subjects.py` e `run_supplementary.py`, que a `main`
+   moveu para `scripts/`. Nesses dois, a versão da `main` ganha.
+3. Resolver os de conteúdo em `src/agents/agent.py`, `src/llm/client.py`,
+   `src/simulation/engine.py` e `src/metrics/analysis.py`. **A base é a versão
+   da `main`**, e as correções do branch são reaplicadas por cima. O inverso
+   descarta o trabalho de outubro sem avisar.
+4. Os `add/add` em `persistence.py` e nos testes de campanha são a mesma
+   funcionalidade escrita duas vezes. Ficar com a da `main` e conferir que os
+   testes do branch ainda passam contra ela.
+5. Rodar a suíte inteira.
 
-**Saída.** Um branch com o código da campanha e as correções, suíte verde.
+**Saída.** Um branch que contém a `main` e as correções, suíte verde.
 
-**Critério de aceite.** Todos os testes passam, incluindo os dois de pesquisa que
-só existem no branch da campanha, `test_research_campaign.py` e
-`test_research_mechanisms.py`. Nenhum teste antigo foi apagado para passar.
+**Critério de aceite.** Todos os testes passam, incluindo os de pesquisa que só
+existem na `main`, como `test_research_campaign.py` e
+`test_research_mechanisms.py`. Nenhum teste foi apagado para passar, e
+`git diff origin/main` não remove nada que a `main` tenha.
 
-**Tamanho.** Cerca de um dia. É a tarefa mais técnica do pacote.
+**Tamanho.** Cerca de um dia. É a tarefa mais técnica e a mais arriscada do
+pacote: um conflito resolvido para o lado errado apaga trabalho sem deixar
+rastro no diff final.
 
 ---
 

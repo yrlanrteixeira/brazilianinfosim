@@ -98,19 +98,26 @@ T5 e só depende de leitura. O quadro completo está em
 
 ## Estado do código, e por que isso importa
 
-O repositório tem três estados que não se encontram:
+A `main` está integrada e em dia: tem o código de pesquisa, o
+`src/metrics/content_review.py` que é o instrumento de anotação, os runners em
+`scripts/`, e ainda `analysis/`, `notebooks/` e `pytest.ini`. Todos os outros
+branches do repositório já foram absorvidos por ela.
 
-| Estado | Onde | O que tem |
-|---|---|---|
-| Correções novas | branch `fix/medicao-de-linhagem` | As três correções e o recálculo. Saiu de um commit de setembro, antes de toda a pesquisa |
-| Código de pesquisa | `main` | `baseline.py` com a referência SEIR, `replay.py`, `recorder.py`, `research_messages.py`, `run_research.py` |
-| Código que rodou a campanha | branch `feat/campanha-em-fatias`, não integrado à `main` | Tudo acima mais `content_review.py` e o notebook do Colab |
+Quem está atrasado é o branch das correções. Ele saiu de um commit de setembro
+e está **37 commits atrás da `main`**.
 
-O branch atual **não contém** o código que gerou os dados. Qualquer execução
-nova precisa do porte da tarefa T1. Enquanto isso não acontecer, as correções
-não alcançam a campanha.
+| | |
+|---|---|
+| O que só existe no branch | As três correções de medição, os três scripts de recálculo e análise, e este pacote |
+| O que só existe na `main` | Todo o trabalho de pesquisa de outubro, a reorganização em `scripts/` e o instrumento de anotação |
+| Arquivos em conflito entre os dois | 15 |
 
-A suíte do branch atual está verde, com 187 testes.
+O branch **não contém** o código que gerou os dados, e a `main` **não contém**
+as correções. Enquanto a tarefa T1 não reconciliar os dois, as correções não
+alcançam a campanha.
+
+A suíte do branch está verde, com 187 testes, mas isso vale só para o que ele
+contém.
 
 ## Ordem de trabalho
 
