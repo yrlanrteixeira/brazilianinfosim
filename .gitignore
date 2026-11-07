@@ -79,9 +79,10 @@ CLAUDE.md
 docs/*
 !docs/artigo-novo/
 
-# Artefatos de compilacao do LaTeX. O .tex e versionado, o resto se regenera.
+# O artigo vive no Overleaf. Aqui ficam so os dados e os scripts que os geram.
+docs/artigo-novo/**/*.tex
+docs/artigo-novo/**/*.pdf
 *.aux
 *.out
 *.toc
 *.synctex.gz
-docs/artigo-novo/*.pdf

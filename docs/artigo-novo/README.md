@@ -129,13 +129,22 @@ T5 e só depende de leitura. O quadro completo está em
 
 ## Onde cada coisa está
 
+**O artigo não fica aqui.** Ele vive no Overleaf, e o `.gitignore` barra `.tex`
+e `.pdf` nesta pasta de propósito. O que o repositório guarda são os dados e os
+scripts que os produzem. A versão com as reescritas desta entrega está em
+`TCC-PC3.tex`, na pasta do TCC e também no Drive, em `brazilianinfosim/`.
+
 | Peça | Caminho |
 |---|---|
 | Correções no simulador | `src/agents/agent.py`, `src/llm/client.py`, `src/simulation/engine.py`, `src/metrics/analysis.py` |
 | Testes das correções | `tests/test_lineage_stance.py`, `tests/test_prompt_framing.py` |
 | Recálculo offline | `scripts/recompute_lineage.py` e seu teste |
+| Tabelas de alcance | `scripts/analisar_corrigido.py` e seu teste |
+| Contrastes pareados | `scripts/contrastes.py` e seu teste |
 | Sorteio da amostra de anotação | `scripts/amostrar_textos.py` e seu teste |
+| Tabelas medidas | `docs/artigo-novo/tabelas/*.csv` |
 | Dados da campanha nova | Google Drive, `brazilianinfosim/conclusao/shard-*-de-8/` |
+| Amostra de anotação | Google Drive, `conclusao/tabelas/amostra_anotacao.csv`, 300 linhas |
 | Campanha do lote Llama | `data/outputs/tcc2/impacto-20260923/`, 154 execuções |
 | Campanha do lote Qwen3 | `data/outputs/tcc2/ciencia-20260923-8h/`, 11 execuções, sem `message_audit` |
 | Consolidação que virou a seção 7.3 | `docs/revisao-tcc-ii/consolidacao-20260924/` |
