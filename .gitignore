@@ -53,12 +53,9 @@ Thumbs.db
 desktop.ini
 
 # Project data / outputs
-data/outputs/*.csv
-data/outputs/*.db
-data/outputs/*.sqlite
-data/outputs/*.png
-data/outputs/*.pdf
-!data/outputs/.gitkeep
+# A pasta inteira: uma campanha passa de gigabytes em JSON de resultado.
+/data/outputs/*
+!/data/outputs/.gitkeep
 
 # Logs
 *.log
@@ -69,5 +66,14 @@ logs/
 *.gguf
 .cache/
 
+# Ferramentas locais. Estavam só no .git/info/exclude, invisível para o time.
+.claude/worktrees/
+.mcp.json
+/SETUP.html
+
+# Instruções de agente específicas da máquina
 CLAUDE.md
-docs/
+
+# Documentação: pesada em PDF e CSV, menos o pacote de entrega do artigo
+docs/*
+!docs/artigo-novo/
