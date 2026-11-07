@@ -78,3 +78,7 @@ CLAUDE.md
 # Documentação: pesada em PDF e CSV, menos o pacote de entrega do artigo
 docs/*
 !docs/artigo-novo/
+resultados.pdf
+resultados.aux
+resultados.log
+resultados.out
