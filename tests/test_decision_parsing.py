@@ -18,7 +18,7 @@ import json
 import pytest
 
 from agents.agent import Decision
-from llm.client import InvalidLLMResponse, LLMClient
+from llm.client import INVALID_RESPONSE_RETRIES, InvalidLLMResponse, LLMClient, RETRY_SEED_STEP
 
 
 class FakeProvider:
@@ -27,12 +27,14 @@ class FakeProvider:
     def __init__(self, responses):
         self.responses = list(responses)
         self.temperatures = []
+        self.seeds = []
         self.calls = 0
 
     def complete(self, prompt: str, max_tokens: int = 300,
-                 temperature: float = None) -> str:
+                 temperature: float = None, seed: int = None) -> str:
         self.calls += 1
         self.temperatures.append(temperature)
+        self.seeds.append(seed)
         return self.responses.pop(0)
 
     @property
@@ -68,6 +70,8 @@ def _decide(client):
     ("compartilhar", Decision.SHARE),
     ("  IGNORAR  ", Decision.IGNORE),
     ("COMPARTILHAR_COM_COMENTARIO", Decision.MUTATE),
+    ("COMENTARIO", Decision.MUTATE),
+    ("comentar", Decision.MUTATE),
 ])
 def test_noisy_label_is_recovered(monkeypatch, written, expected):
     client, _ = _client(monkeypatch, [_raw(written, "texto")])
@@ -76,26 +80,54 @@ def test_noisy_label_is_recovered(monkeypatch, written, expected):
     assert refused is False
 
 
+def test_alias_is_counted_as_normalized_label(monkeypatch):
+    """O modelo repete COMENTARIO mesmo com outra semente; a abreviação fica registrada."""
+    client, fake = _client(monkeypatch, [_raw("COMENTARIO", "texto")], seed=71000)
+    assert _decide(client)[0] == Decision.MUTATE
+    assert client.stats["normalized_labels"] == 1 and client.stats["parse_errors"] == 0
+    assert fake.calls == 1
+
+
+ATTEMPTS = INVALID_RESPONSE_RETRIES + 1
+
+
 def test_unrecoverable_label_raises_and_counts_an_error(monkeypatch):
-    client, _ = _client(monkeypatch, [_raw("BANANA", "texto")])
+    client, _ = _client(monkeypatch, [_raw("BANANA", "texto")] * ATTEMPTS)
     with pytest.raises(InvalidLLMResponse):
         _decide(client)
-    assert client.stats["parse_errors"] == 1
+    assert client.stats["parse_errors"] == ATTEMPTS
 
 
 def test_recovery_does_not_invent_a_distant_decision(monkeypatch):
     """Tolerância corrige typo, não adivinha intenção."""
-    client, _ = _client(monkeypatch, [_raw("REFUTAR_TUDO_SEMPRE", "x")])
+    client, _ = _client(monkeypatch, [_raw("REFUTAR_TUDO_SEMPRE", "x")] * ATTEMPTS)
     with pytest.raises(InvalidLLMResponse):
         _decide(client)
-    assert client.stats["parse_errors"] == 1
+    assert client.stats["parse_errors"] == ATTEMPTS
 
 
 def test_malformed_json_is_still_a_parse_error(monkeypatch):
-    client, _ = _client(monkeypatch, ["isto nao e json"])
+    client, _ = _client(monkeypatch, ["isto nao e json"] * ATTEMPTS)
     with pytest.raises(InvalidLLMResponse):
         _decide(client)
-    assert client.stats["parse_errors"] == 1
+    assert client.stats["parse_errors"] == ATTEMPTS
+
+
+def test_invalid_label_is_asked_again_with_another_seed(monkeypatch):
+    """Uma resposta inválida isolada não descarta a execução inteira."""
+    client, fake = _client(monkeypatch, [_raw("REFUTAR", ""), _raw("REFUTAR", "texto")], seed=71000)
+    decision, content, refused = _decide(client)
+    assert (decision, content, refused) == (Decision.REFUTE, "texto", False)
+    assert fake.seeds == [None, 71000 + RETRY_SEED_STEP]
+    assert [event["seed"] for event in client.audit_log] == [71000, 71000 + RETRY_SEED_STEP]
+    assert "invalid_response" in client.audit_log[0] and "invalid_response" not in client.audit_log[1]
+    assert client.stats["parse_errors"] == 1 and client.stats["api_calls"] == 2
+
+
+def test_retries_without_seed_leave_sampling_to_the_provider(monkeypatch):
+    client, fake = _client(monkeypatch, ["lixo", _raw("IGNORAR")])
+    assert _decide(client)[0] == Decision.IGNORE
+    assert fake.seeds == [None, None]
 
 
 @pytest.mark.parametrize("raw", [
@@ -104,10 +136,10 @@ def test_malformed_json_is_still_a_parse_error(monkeypatch):
     _raw("COMPARTILHAR", None), _raw("COMPARTILHAR", []), _raw(123, "texto"),
 ])
 def test_invalid_schema_never_becomes_agent_behavior(monkeypatch, raw):
-    client, _ = _client(monkeypatch, [raw])
+    client, _ = _client(monkeypatch, [raw] * ATTEMPTS)
     with pytest.raises(InvalidLLMResponse):
         _decide(client)
-    assert client.stats["parse_errors"] == 1
+    assert client.stats["parse_errors"] == ATTEMPTS
     assert client.stats["backend_errors"] == 0
 
 

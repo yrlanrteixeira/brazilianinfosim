@@ -10,7 +10,7 @@ o alcance estrito (profundidade 0), o ambíguo (2 em diante) e o limite
 superior. A coluna `reach_legacy_pct` reproduz a contagem antiga e serve de
 conferência: divergir de `final_reach_pct` indica reconstrução malfeita.
 
-    python recompute_lineage.py data/outputs/tcc2/conclusao
+    python scripts/recompute_lineage.py data/outputs/tcc2/conclusao
 """
 
 from __future__ import annotations

@@ -13,9 +13,10 @@ import networkx as nx
 from loguru import logger
 
 from agents.agent import InfoAgent, Message
-from agents.profiles import AgentType, generate_profile
-from network.topology import Topology, build_network, get_hub_nodes
+from agents.profiles import AgentType, BRAZIL_DISTRIBUTION, generate_profile
+from network.topology import Topology, build_network, get_hub_nodes, match_edge_count
 from llm.client import LLMClient
+from simulation.recorder import RunRecorder
 
 
 @dataclass
@@ -29,6 +30,13 @@ class SimulationConfig:
     profile_seed: Optional[int] = None
     activation_seed: Optional[int] = None
     llm_seed: Optional[int] = None
+    network_degree: Optional[int] = None
+    emitter_type: Optional[str] = None
+    skeptic_fraction: Optional[float] = None
+    synchronous_updates: bool = False
+    indifferent_uses_llm: bool = False
+    mutation_enabled: bool = True
+    forwarding_limit: int = 2
 
     # Mensagem inicial
     initial_message: str = (
@@ -49,6 +57,9 @@ class SimulationConfig:
     cache_mode: Optional[str] = None     # None | "exact" | "semantic" | "off"
     temperature: Optional[float] = None
 
+    # Caminho do JSON de replay. None não grava.
+    record_path: Optional[str] = None
+
     def __post_init__(self):
         if self.n_agents < 7 or self.max_ticks < 1:
             raise ValueError("Use n_agents >= 7 e max_ticks >= 1.")
@@ -56,8 +67,21 @@ class SimulationConfig:
             raise ValueError("intervention_tick deve ser não negativo.")
         if self.inject_at not in {"hub", "random", "influencer"}:
             raise ValueError("Ponto de injeção desconhecido.")
-        if self.intervention not in {None, "factcheckers_hub", "factcheckers_peripheral", "remove_hubs"}:
+        if self.intervention not in {None, "factcheckers_hub", "factcheckers_peripheral", "remove_hubs", "limit_forwarding"}:
             raise ValueError("Intervenção desconhecida.")
+        if self.network_degree is not None and (
+            not isinstance(self.network_degree, int) or self.network_degree < 2
+            or self.network_degree >= self.n_agents or self.network_degree % 2
+        ):
+            raise ValueError("network_degree deve ser par, >= 2 e menor que n_agents.")
+        if self.emitter_type is not None:
+            AgentType(self.emitter_type)
+            if self.inject_at == "influencer":
+                raise ValueError("Use hub ou random para controlar o perfil do emissor.")
+        if self.skeptic_fraction is not None and not 0 <= self.skeptic_fraction <= 1:
+            raise ValueError("skeptic_fraction deve estar entre 0 e 1.")
+        if not isinstance(self.forwarding_limit, int) or self.forwarding_limit < 1:
+            raise ValueError("forwarding_limit deve ser inteiro positivo.")
 
 
 class InfoSimModel(mesa.Model):
@@ -73,13 +97,23 @@ class InfoSimModel(mesa.Model):
         self.config = config
         self.rng = random.Random(config.seed)
         self.tick = 0   # contador próprio de ticks (Mesa 3.x removeu schedule.time)
+        self.message_audit: list[dict] = []
 
         # Constrói rede
+        network_seed = config.network_seed if config.network_seed is not None else config.seed
+        network_options = {}
+        if config.network_degree is not None:
+            network_options = {"k": config.network_degree, "m": config.network_degree // 2}
+            if config.topology == Topology.RANDOM:
+                network_options["p"] = config.network_degree / (config.n_agents - 1)
         self.G: nx.Graph = build_network(
             topology=config.topology,
             n_agents=config.n_agents,
-            seed=config.network_seed if config.network_seed is not None else config.seed,
+            seed=network_seed,
+            **network_options,
         )
+        if config.network_degree is not None:
+            match_edge_count(self.G, config.n_agents * config.network_degree // 2, network_seed)
 
         # Inicializa LLM
         self.llm = LLMClient(
@@ -115,6 +149,8 @@ class InfoSimModel(mesa.Model):
         self.removed_agents: dict[int, InfoAgent] = {}
         self.intervention_applied_tick: Optional[int] = None
         self.intervention_nodes: list[int] = []
+        self.active_forwarding_limit: Optional[int] = None
+        self.round_inboxes = None
 
         # Coleta de dados por tick
         self.datacollector = mesa.DataCollector(
@@ -140,12 +176,63 @@ class InfoSimModel(mesa.Model):
         )
 
         # Injeta mensagem inicial
+        self.seed_node: Optional[int] = None
         self._inject_initial_message()
+        self._configure_population()
+        self.initial_state["profiles"] = [
+            {"node_id": node, **asdict(agent.profile)} for node, agent in self.agents_by_id.items()
+        ]
+        self.initial_state["network_normalization"] = dict(self.G.graph)
+        self.recorder = self._make_recorder()
         self.datacollector.collect(self)
         logger.info(
             f"Simulação iniciada: {config.n_agents} agentes, "
             f"topologia={config.topology.value}, seed={config.seed}"
         )
+
+    def _configure_population(self) -> None:
+        """Varia ceticismo em subconjuntos aninhados, preservando o emissor."""
+        cfg = self.config
+        seed = cfg.profile_seed if cfg.profile_seed is not None else cfg.seed
+        if cfg.skeptic_fraction is not None:
+            candidates = [node for node in self.agents_by_id if node != self.seed_node]
+            random.Random(f"skeptics:{seed}").shuffle(candidates)
+            skeptics = set(candidates[:round(cfg.skeptic_fraction * len(candidates))])
+            types = [kind for kind in AgentType if kind != AgentType.SKEPTIC]
+            for node in candidates:
+                kind = AgentType.SKEPTIC if node in skeptics else random.Random(
+                    f"type:{seed}:{node}"
+                ).choices(types, [BRAZIL_DISTRIBUTION[t] for t in types], k=1)[0]
+                self.agents_by_id[node].profile = generate_profile(
+                    kind, seed=f"controlled-profile:{seed}:{node}"
+                )
+        if cfg.emitter_type is not None:
+            self.agents_by_id[self.seed_node].profile = generate_profile(
+                AgentType(cfg.emitter_type), seed=f"emitter:{seed}"
+            )
+
+    def _make_recorder(self) -> Optional[RunRecorder]:
+        if not self.config.record_path:
+            return None
+        c = self.config
+        recorder = RunRecorder(meta={
+            "n_agents": c.n_agents,
+            "topology": c.topology.value,
+            "seed": c.seed,
+            "network_seed": c.network_seed if c.network_seed is not None else c.seed,
+            "initial_edges": self.initial_state["edges"],
+            "inject_at": c.inject_at,
+            "intervention": c.intervention,
+            "intervention_tick": c.intervention_tick,
+            "seed_node": self.seed_node,
+            "initial_message": c.initial_message,
+            "temperature": self.llm.temperature,
+            "cache_mode": self.llm.cache_mode,
+            "provider": self.llm.provider.name,
+            "model": self.llm.provider.model,
+        })
+        recorder.snapshot(self)
+        return recorder
 
     def _inject_initial_message(self) -> None:
         """Injeta a fake news no nó inicial conforme configuração."""
@@ -167,6 +254,7 @@ class InfoSimModel(mesa.Model):
             hops=0,
             sender_id=None,
         )
+        self.seed_node = start_node
         seed_agent = self.agents_by_id[start_node]
         self.initial_state["injection_node"] = start_node
         seed_agent.receive(msg)
@@ -206,6 +294,9 @@ class InfoSimModel(mesa.Model):
             self.removed_nodes.extend(hubs)
             self.intervention_nodes = hubs
             logger.info(f"Intervenção: {len(hubs)} supernós removidos da rede")
+        elif self.config.intervention == "limit_forwarding":
+            self.active_forwarding_limit = self.config.forwarding_limit
+            self.intervention_nodes = list(self.agents_by_id)
         self.intervention_applied_tick = self.tick
 
     def _population_agents(self):
@@ -251,8 +342,17 @@ class InfoSimModel(mesa.Model):
             self._apply_intervention()
 
         # Mesa 3.x: ativação aleatória dos agentes via AgentSet
+        if self.config.synchronous_updates:
+            self.round_inboxes = {node: agent.inbox for node, agent in self.agents_by_id.items()}
+            for agent in self.agents_by_id.values():
+                agent.inbox = []
+                agent._tick_seen_at = self.tick
+                agent._tick_seen = set()
         self.agents.shuffle_do("step")
+        self.round_inboxes = None
         self.tick += 1
+        if self.recorder:
+            self.recorder.snapshot(self)
         self.datacollector.collect(self)
 
     def run(self, deadline: Optional[float] = None) -> "SimulationResult":
@@ -274,6 +374,10 @@ class InfoSimModel(mesa.Model):
             f"LLM: {self.llm.stats}"
         )
 
+        if self.recorder:
+            destino = self.recorder.save(self.config.record_path)
+            logger.info(f"Gravação de replay salva em {destino}")
+
         return SimulationResult(
             config=self.config,
             model_data=self.datacollector.get_model_vars_dataframe(),
@@ -294,6 +398,7 @@ class InfoSimModel(mesa.Model):
             intervention_nodes=list(self.intervention_nodes),
             initial_state=self.initial_state,
             decision_audit=list(getattr(self.llm, "audit_log", [])),
+            message_audit=list(self.message_audit),
         )
 
 
@@ -314,11 +419,12 @@ class SimulationResult:
     ticks_run: int = 0
     stop_reason: str = "unknown"
     final_correction_reach_pct: float = 0.0
-    # Alcance da linhagem cuja postura depende de anotação. O limite superior do
-    # alcance do boato é final_reach_pct mais este valor.
+    # Contestação de correção, profundidade 2 ou mais. O limite superior do
+    # alcance do boato é final_reach_pct somado a este valor.
     final_ambiguous_reach_pct: float = 0.0
     intervention_applied: bool = False
     intervention_applied_tick: Optional[int] = None
     intervention_nodes: list[int] = field(default_factory=list)
     initial_state: dict = field(default_factory=dict)
     decision_audit: list[dict] = field(default_factory=list)
+    message_audit: list[dict] = field(default_factory=list)

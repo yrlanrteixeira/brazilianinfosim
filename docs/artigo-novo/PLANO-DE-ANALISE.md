@@ -107,5 +107,5 @@ são o gabarito.
 
 Qualquer análise que carregue um total diferente está lendo uma cópia
 incompleta, e o resultado sai com cara de completo. Por isso
-`analisar_corrigido.py` aceita `--esperado 1723` e para quando não bate. Use
+`scripts/analisar_corrigido.py` aceita `--esperado 1723` e para quando não bate. Use
 sempre.

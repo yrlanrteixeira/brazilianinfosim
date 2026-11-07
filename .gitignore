@@ -54,6 +54,7 @@ desktop.ini
 
 # Project data / outputs
 # A pasta inteira: uma campanha passa de gigabytes em JSON de resultado.
+# Para versionar um arquivo escolhido, como uma gravação: git add -f <arquivo>
 /data/outputs/*
 !/data/outputs/.gitkeep
 

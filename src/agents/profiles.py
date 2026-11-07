@@ -57,7 +57,7 @@ class AgentProfile:
     skepticism: float           # ceticismo epistêmico
     share_propensity: float     # propensão a compartilhar
     confirmation_bias: float    # viés de confirmação
-    social_capital: int         # número esperado de conexões
+    social_capital: int         # reservado; não altera a rede nem o prompt
 
     # Contexto demográfico brasileiro
     age_group: AgeGroup
@@ -134,7 +134,7 @@ class AgentProfile:
         )
 
 
-# ── Distribuição padrão calibrada para o contexto brasileiro ──────────────
+# Hipótese de composição dos perfis, sem calibração populacional.
 BRAZIL_DISTRIBUTION = {
     AgentType.AMPLIFIER:   0.25,
     AgentType.INDIFFERENT: 0.40,
@@ -159,7 +159,7 @@ def _clamp(value: float, lo=0.0, hi=1.0) -> float:
 
 def generate_profile(agent_type: Optional[AgentType] = None, seed: Optional[int] = None) -> AgentProfile:
     """
-    Gera um perfil aleatório calibrado para o contexto brasileiro.
+    Gera um perfil sintético com contexto brasileiro e parâmetros de projeto.
     Se agent_type=None, sorteia conforme BRAZIL_DISTRIBUTION.
     """
     rng = random.Random(seed)
@@ -189,13 +189,13 @@ def generate_profile(agent_type: Optional[AgentType] = None, seed: Optional[int]
         age_group=rng.choice(list(AgeGroup)),
         region=rng.choices(
             list(Region),
-            weights=[0.08, 0.27, 0.08, 0.42, 0.15],  # distribuição IBGE
+            weights=[0.08, 0.27, 0.08, 0.42, 0.15],  # hipótese contextual
             k=1
         )[0],
         education=rng.choices(
             list(Education),
-            weights=[0.40, 0.37, 0.23],  # distribuição IBGE
+            weights=[0.40, 0.37, 0.23],  # hipótese contextual
             k=1
         )[0],
-        uses_whatsapp=rng.random() < 0.92,  # 92% dos brasileiros
+        uses_whatsapp=rng.random() < 0.92,  # hipótese de frequência no prompt
     )

@@ -100,10 +100,10 @@ ambíguo.
 
 ## Como a amostra é sorteada
 
-Pelo script `amostrar_textos.py`, na raiz do repositório:
+Pelo script `scripts/amostrar_textos.py`:
 
 ```
-python amostrar_textos.py <pasta da campanha> --saida amostra_anotacao.csv --seed <seed declarada>
+python scripts/amostrar_textos.py <pasta da campanha> --saida amostra_anotacao.csv --seed <seed declarada>
 ```
 
 O sorteio ordena os textos por identificador antes de sortear, então não depende

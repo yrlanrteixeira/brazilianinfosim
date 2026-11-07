@@ -88,8 +88,8 @@ T5 e só depende de leitura. O quadro completo está em
 |---|---|
 | Correções no simulador | `src/agents/agent.py`, `src/llm/client.py`, `src/simulation/engine.py`, `src/metrics/analysis.py` |
 | Testes das correções | `tests/test_lineage_stance.py`, `tests/test_prompt_framing.py` |
-| Recálculo offline | `recompute_lineage.py` e seu teste |
-| Sorteio da amostra de anotação | `amostrar_textos.py` e seu teste |
+| Recálculo offline | `scripts/recompute_lineage.py` e seu teste |
+| Sorteio da amostra de anotação | `scripts/amostrar_textos.py` e seu teste |
 | Dados da campanha nova | Google Drive, `brazilianinfosim/conclusao/shard-*-de-8/` |
 | Campanha do lote Llama | `data/outputs/tcc2/impacto-20260923/`, 154 execuções |
 | Campanha do lote Qwen3 | `data/outputs/tcc2/ciencia-20260923-8h/`, 11 execuções, sem `message_audit` |

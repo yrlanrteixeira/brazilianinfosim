@@ -55,8 +55,8 @@ rastro no diff final.
 qualquer pessoa roda de novo, não de sessão interativa.
 
 **Entrada.** A campanha `conclusao` copiada para
-`data/outputs/tcc2/conclusao/`. Os scripts `recompute_lineage.py`,
-`analisar_corrigido.py` e `amostrar_textos.py`, na raiz do repositório.
+`data/outputs/tcc2/conclusao/`. Os scripts `scripts/recompute_lineage.py`,
+`scripts/analisar_corrigido.py` e `scripts/amostrar_textos.py`, em `scripts/`.
 
 **Situação.** O recálculo já rodou uma vez sobre a campanha fechada e deu
 **1.723 execuções, 1.641 contrastes pareados, nenhuma execução sem auditoria e
@@ -71,18 +71,18 @@ nesse estado produz tabela plausível e errada, sem nenhum sinal. O total é
 
 **Passos.**
 
-1. Rodar `recompute_lineage.py` apontando para a pasta da campanha. Ele percorre
+1. Rodar `scripts/recompute_lineage.py` apontando para a pasta da campanha. Ele percorre
    os oito shards e grava `runs_corrigido.csv` e `paired_effects_corrigido.csv`
    em cada um.
 2. Conferir o relatório: a contagem de divergências tem que ser zero e o total
    tem que ser 1.723. Divergência acima de zero invalida o resto e precisa ser
    investigada antes de seguir.
-3. Rodar `analisar_corrigido.py` com `--esperado 1723`, que grava as tabelas em
+3. Rodar `scripts/analisar_corrigido.py` com `--esperado 1723`, que grava as tabelas em
    `tabelas/` com o bootstrap agrupado pela seed estrutural. A opção existe
    justamente para barrar a cópia incompleta.
 4. Extrair do `decision_audit` a taxa de recusa do emissor por estímulo. É a
    única parte que ainda não tem script.
-5. Rodar `amostrar_textos.py` com a seed declarada e entregar o CSV a T3 e T4.
+5. Rodar `scripts/amostrar_textos.py` com a seed declarada e entregar o CSV a T3 e T4.
 6. Gerar as figuras.
 
 **Saída.** As tabelas em CSV, as figuras, e `amostra_anotacao.csv`.

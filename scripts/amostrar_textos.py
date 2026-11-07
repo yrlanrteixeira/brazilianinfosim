@@ -12,7 +12,7 @@ ele será julgado, e as colunas que o anotador preenche. A coluna `peso` é a
 razão entre o total do estrato e o tamanho sorteado, e é o que permite voltar da
 amostra para a população.
 
-    python amostrar_textos.py data/outputs/tcc2/conclusao --saida amostra_anotacao.csv
+    python scripts/amostrar_textos.py data/outputs/tcc2/conclusao --saida amostra_anotacao.csv
 """
 
 from __future__ import annotations

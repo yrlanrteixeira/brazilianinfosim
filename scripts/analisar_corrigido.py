@@ -8,7 +8,7 @@ independentes e a reamostragem sorteia seeds inteiras.
 Grava em `tabelas/` uma linha por medida, com média, mediana, intervalo de 95% e
 o número de seeds que sustenta cada linha.
 
-    python analisar_corrigido.py data/outputs/tcc2/conclusao
+    python scripts/analisar_corrigido.py data/outputs/tcc2/conclusao
 """
 
 from __future__ import annotations

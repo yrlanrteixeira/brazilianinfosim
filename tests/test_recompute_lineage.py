@@ -11,7 +11,7 @@ reconstrução leu a auditoria certo, e só então o alcance estrito tem valor.
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
 from recompute_lineage import depth_by_content, exposures, recompute, removed_nodes
 
