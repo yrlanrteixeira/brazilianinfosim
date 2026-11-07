@@ -59,12 +59,12 @@ def clustered_ci(totals: list[tuple[float, int]], seed: int = 0,
             round(draws[int(0.975 * resamples) - 1], 2))
 
 
-def summarize(rows: list[dict], value, label: str) -> dict:
+def summarize(rows: list[dict], value, label: str, cluster: str = CLUSTER) -> dict:
     if not rows:
         return {"medida": label, "n": 0, "seeds": 0, "media": "", "mediana": "",
                 "ic95_baixo": "", "ic95_alto": ""}
     valores = [value(row) for row in rows]
-    totals = cluster_totals(rows, value)
+    totals = cluster_totals(rows, value, cluster)
     baixo, alto = clustered_ci(totals)
     return {
         "medida": label,
