@@ -51,6 +51,51 @@ Com um modelo alinhado, o emissor refuta o próprio boato e a linhagem morre no
 primeiro nó na maioria das execuções. A taxa de recusa depende do tema do
 estímulo e, em parte, do enquadramento do prompt.
 
+## Os números medidos
+
+Saíram de `scripts/analisar_corrigido.py` sobre as 1.723 execuções, com
+bootstrap agrupado pelas 23 seeds estruturais. Os CSV estão em
+[tabelas/](tabelas/).
+
+**O tamanho do artefato**, em todas as execuções:
+
+| Medida | Média | Mediana | IC 95% |
+|---|---:|---:|---:|
+| Diferença pareada, contagem antiga menos estrito (p.p.) | 27,13 | 0,0 | 21,47 a 33,00 |
+| Proporção em que o boato não passou do emissor | 0,85 | 1,0 | 0,75 a 0,95 |
+
+**Nos 82 controles:**
+
+| Alcance | Média | Mediana | IC 95% |
+|---|---:|---:|---:|
+| Pela contagem antiga | 36,20% | 2,0 | 26,60 a 45,92 |
+| Estrito do boato | 6,80% | 2,0 | 2,49 a 14,53 |
+| Da correção | 60,98% | 100,0 | 49,41 a 73,68 |
+| Ambíguo | 31,59% | 0,0 | 22,61 a 41,15 |
+| Limite superior do boato | 36,20% | 2,0 | 26,60 a 45,92 |
+
+O alcance verdadeiro do boato está entre 6,80% e 36,20%. Fechar esse intervalo é
+o que a anotação de postura faz, nas tarefas T3 e T4.
+
+**Por estímulo, e é aqui que o argumento fica difícil de contestar:**
+
+| Estímulo | Alcance estrito | Alcance antigo | Só o emissor | n |
+|---|---:|---:|---:|---:|
+| `benefit_auto_a` | 5,57% | 13,21% | 0,84 | 395 |
+| `benefit_auto_b` | 8,16% | 21,27% | 0,63 | 503 |
+| `health_dna_a` | **2,00%** | **63,19%** | **1,00** | 475 |
+| `health_dna_b` | **2,00%** | 25,05% | **1,00** | 350 |
+
+Nos dois estímulos de saúde, o alcance estrito é 2,00% com intervalo de 2,00 a
+2,00, e a proporção de execuções em que o boato não passou do emissor é 1,00 com
+intervalo de 1,00 a 1,00. Ou seja: em nenhuma das 825 execuções a alegação falsa
+sobre vacinas saiu do primeiro nó. A contagem antiga reportava alcance médio de
+63,19% para `health_dna_a`, com mediana de 94%. Esses 63 pontos eram correções e
+contestações de correções.
+
+Os estímulos de economia circularam de verdade, e é de lá que vêm os 4.303
+textos distintos da linhagem do boato.
+
 ## O que muda em cada seção do PC2
 
 | Seção | O que está escrito hoje | O que fazer | Tarefa |

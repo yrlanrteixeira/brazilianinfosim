@@ -1,0 +1,13 @@
+medida,n,seeds,media,mediana,ic95_baixo,ic95_alto
+benefit_auto_a: alcance estrito,395,9,5.57,2.0,2.0,11.49
+benefit_auto_a: alcance antigo,395,9,13.21,2.0,6.78,20.39
+benefit_auto_a: só o emissor,395,9,0.84,1.0,0.64,1.0
+benefit_auto_b: alcance estrito,503,12,8.16,2.0,3.7,15.59
+benefit_auto_b: alcance antigo,503,12,21.27,2.0,12.22,30.92
+benefit_auto_b: só o emissor,503,12,0.63,1.0,0.43,0.81
+health_dna_a: alcance estrito,475,13,2.0,2.0,2.0,2.0
+health_dna_a: alcance antigo,475,13,63.19,94.0,55.69,69.98
+health_dna_a: só o emissor,475,13,1.0,1.0,1.0,1.0
+health_dna_b: alcance estrito,350,9,2.0,2.0,2.0,2.0
+health_dna_b: alcance antigo,350,9,25.05,2.0,16.18,33.67
+health_dna_b: só o emissor,350,9,1.0,1.0,1.0,1.0

@@ -87,24 +87,22 @@ a medida.
 
 ## Os estratos e por que o ambíguo tem mais linhas
 
-| Estrato | Profundidade | Linhas | Papel |
-|---|---|---:|---|
-| `boato` | 0 | todos | Censo, não amostra. São pouquíssimos textos |
-| `correcao` | 1 | 60 | Conferência do instrumento: espera-se predominância de `rejeita` |
-| `ambiguo` | 2 ou mais | 180 | É aqui que o limite superior do alcance se decide |
+| Estrato | Profundidade | População | Sorteados | Papel |
+|---|---|---:|---:|---|
+| `boato` | 0 | 4.303 | 60 | Conferência: espera-se predominância de `apoia` |
+| `correcao` | 1 | 173.051 | 60 | Conferência: espera-se predominância de `rejeita` |
+| `ambiguo` | 2 ou mais | 47.728 | 180 | É aqui que o limite superior do alcance se decide |
 
-**Por que o estrato do boato é um censo.** O boato praticamente não foi
-repassado, então os únicos textos publicados em profundidade 0 são os próprios
-estímulos. Na campanha inteira são dois. O script pede até 60 e leva o que
-existir, sem falhar.
+São 225.082 textos distintos publicados na campanha inteira.
 
-Isso tem consequência para o protocolo: **a conferência do instrumento se apoia
-no estrato `correcao`**, não no do boato. Se os textos de profundidade 1 não
-vierem predominantemente `rejeita`, o problema está na anotação ou na
-reconstrução, e precisa ser resolvido antes de interpretar o estrato ambíguo.
+Os dois primeiros estratos servem de controle do próprio instrumento. Se o
+estrato `boato` não vier predominantemente `apoia`, ou o `correcao` não vier
+predominantemente `rejeita`, o problema está na anotação ou na reconstrução, e
+isso precisa ser resolvido antes de interpretar o estrato ambíguo.
 
-Que o estrato do boato seja minúsculo não é defeito da amostra: é o próprio
-achado da campanha, visto de outro ângulo.
+O estrato do boato existe porque os estímulos de economia circularam e foram
+reescritos pelo caminho. Os de saúde não: neles o boato nunca saiu do emissor, e
+nenhum texto novo entrou nessa linhagem.
 
 ## Como a amostra é sorteada
 
