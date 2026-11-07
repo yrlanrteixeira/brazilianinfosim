@@ -12,7 +12,7 @@ início.
 
 ## T1. Levar as correções para o código que roda a campanha
 
-**Por que existe.** As três correções estão no branch `fix/acoplamento-intervencao`,
+**Por que existe.** As três correções estão no branch `fix/medicao-de-linhagem`,
 que saiu de um commit de setembro e não contém o código de pesquisa. O código
 que gerou os dados está em `feat/campanha-em-fatias`, que nem na `main` foi
 integrado. Hoje as correções não alcançam a campanha.
@@ -57,15 +57,23 @@ qualquer pessoa roda de novo, não de sessão interativa.
 nenhuma divergência**. Rodar de novo localmente serve de conferência: o número
 tem que bater.
 
+**Antes de tudo, confira se a cópia está completa.** O Google Drive para
+Desktop entrega a pasta antes de terminar de indexar: os arquivos aparecem, o
+`runs.csv` abre, e tem menos linhas do que a campanha tem. Uma análise rodada
+nesse estado produz tabela plausível e errada, sem nenhum sinal. O total é
+1.723 execuções; abaixo disso, a cópia ainda não chegou.
+
 **Passos.**
 
 1. Rodar `recompute_lineage.py` apontando para a pasta da campanha. Ele percorre
    os oito shards e grava `runs_corrigido.csv` e `paired_effects_corrigido.csv`
    em cada um.
-2. Conferir o relatório: a contagem de divergências tem que ser zero. Divergência
-   acima de zero invalida o resto e precisa ser investigada antes de seguir.
-3. Rodar `analisar_corrigido.py`, que grava as tabelas em `tabelas/` com o
-   bootstrap agrupado pela seed estrutural.
+2. Conferir o relatório: a contagem de divergências tem que ser zero e o total
+   tem que ser 1.723. Divergência acima de zero invalida o resto e precisa ser
+   investigada antes de seguir.
+3. Rodar `analisar_corrigido.py` com `--esperado 1723`, que grava as tabelas em
+   `tabelas/` com o bootstrap agrupado pela seed estrutural. A opção existe
+   justamente para barrar a cópia incompleta.
 4. Extrair do `decision_audit` a taxa de recusa do emissor por estímulo. É a
    única parte que ainda não tem script.
 5. Rodar `amostrar_textos.py` com a seed declarada e entregar o CSV a T3 e T4.

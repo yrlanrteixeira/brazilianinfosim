@@ -102,7 +102,7 @@ O repositório tem três estados que não se encontram:
 
 | Estado | Onde | O que tem |
 |---|---|---|
-| Correções novas | branch `fix/acoplamento-intervencao` | As três correções e o recálculo. Saiu de um commit de setembro, antes de toda a pesquisa |
+| Correções novas | branch `fix/medicao-de-linhagem` | As três correções e o recálculo. Saiu de um commit de setembro, antes de toda a pesquisa |
 | Código de pesquisa | `main` | `baseline.py` com a referência SEIR, `replay.py`, `recorder.py`, `research_messages.py`, `run_research.py` |
 | Código que rodou a campanha | branch `feat/campanha-em-fatias`, não integrado à `main` | Tudo acima mais `content_review.py` e o notebook do Colab |
 
@@ -110,7 +110,7 @@ O branch atual **não contém** o código que gerou os dados. Qualquer execuçã
 nova precisa do porte da tarefa T1. Enquanto isso não acontecer, as correções
 não alcançam a campanha.
 
-A suíte do branch atual está verde, com 170 testes.
+A suíte do branch atual está verde, com 187 testes.
 
 ## Ordem de trabalho
 

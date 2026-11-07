@@ -94,7 +94,18 @@ ficar na seção de limites:
 
 | Parâmetro | Valor |
 |---|---|
-| Seed do sorteio da amostra | a declarar antes do sorteio |
+| Seed do sorteio da amostra | 0, declarada antes do sorteio |
 | Tamanhos dos estratos | boato 60, correção 60, ambíguo 180 |
 | Número de condições para Bonferroni | a contar em T2 |
 | Reamostragens do bootstrap | 10.000 |
+
+## Conferência de integridade antes de qualquer tabela
+
+A campanha fechada tem **1.723 execuções e 1.641 contrastes pareados**, todas
+com auditoria de mensagens e nenhuma divergência na reconstrução. Esses números
+são o gabarito.
+
+Qualquer análise que carregue um total diferente está lendo uma cópia
+incompleta, e o resultado sai com cara de completo. Por isso
+`analisar_corrigido.py` aceita `--esperado 1723` e para quando não bate. Use
+sempre.
