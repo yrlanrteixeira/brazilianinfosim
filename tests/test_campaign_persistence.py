@@ -8,6 +8,7 @@ perder tudo o que já rodou.
 """
 
 import sys
+import json
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
@@ -156,9 +157,76 @@ def test_partial_backend_failure_does_not_abort(monkeypatch, fake_engine):
     assert len(pd.read_csv(fake_engine / "camp_runs.csv")) == 1
 
 
-def test_without_resume_the_previous_file_is_replaced(fake_engine):
+def test_without_resume_existing_campaign_is_preserved(fake_engine):
     run_mutation.run_campaign(SUBJECTS, [42], 50, 1.0, prefix="camp")
-    run_mutation.run_campaign(SUBJECTS, [123], 50, 1.0, prefix="camp")
+    with pytest.raises(ValueError, match="já existe"):
+        run_mutation.run_campaign(SUBJECTS, [123], 50, 1.0, prefix="camp")
 
     rows = pd.read_csv(fake_engine / "camp_runs.csv")
-    assert sorted(rows["seed"]) == [123]
+    assert sorted(rows["seed"]) == [42]
+
+
+@pytest.mark.parametrize("n_agents,temperature,subjects", [
+    (60, 1.0, SUBJECTS), (50, 0.3, SUBJECTS),
+    (50, 1.0, {"Economia/benefícios": "outro estímulo"}),
+])
+def test_resume_rejects_changed_experiment(fake_engine, n_agents, temperature, subjects):
+    run_mutation.run_campaign(SUBJECTS, [42], 50, 1.0, prefix="camp")
+    with pytest.raises(ValueError, match="mudou"):
+        run_mutation.run_campaign(subjects, [123], n_agents, temperature,
+                                  prefix="camp", resume=True)
+
+
+def test_resume_rejects_changed_model(monkeypatch, fake_engine):
+    run_mutation.run_campaign(SUBJECTS, [42], 50, 1.0, prefix="camp")
+    monkeypatch.setenv("LLM_MODEL", "modelo-diferente")
+    with pytest.raises(ValueError, match="mudou"):
+        run_mutation.run_campaign(SUBJECTS, [123], 50, 1.0, prefix="camp", resume=True)
+
+
+def test_resume_rejects_legacy_csv_without_provenance(fake_engine):
+    pd.DataFrame([{"subject": next(iter(SUBJECTS)), "seed": 42}]).to_csv(
+        fake_engine / "camp_runs.csv", index=False)
+    with pytest.raises(ValueError, match="sem manifesto"):
+        run_mutation.run_campaign(SUBJECTS, [42], 50, 1.0, prefix="camp", resume=True)
+
+
+def test_resume_recovers_both_exports_from_atomic_checkpoint(monkeypatch, fake_engine):
+    original = pd.DataFrame.to_csv
+
+    def crash_export(frame, path, **kwargs):
+        if str(path).endswith("_raw.csv"):
+            raise OSError("disco interrompido entre dois CSVs")
+        return original(frame, path, **kwargs)
+
+    monkeypatch.setattr(pd.DataFrame, "to_csv", crash_export)
+    with pytest.raises(OSError):
+        run_mutation.run_campaign(SUBJECTS, [42], 50, 1.0, prefix="camp")
+    assert json.loads((fake_engine / "camp_checkpoint.json").read_text(encoding="utf-8"))["rows"]
+    monkeypatch.setattr(pd.DataFrame, "to_csv", original)
+    run_mutation.run_campaign(SUBJECTS, [42], 50, 1.0, prefix="camp", resume=True)
+    assert FakeModel.built == 1
+    assert len(pd.read_csv(fake_engine / "camp_raw.csv")) == 1
+
+
+def test_zero_mutations_exports_empty_table_with_schema(monkeypatch, fake_engine):
+    def no_mutations(self):
+        result = FakeResult(self.config.seed)
+        result.mutations = []
+        return result
+
+    monkeypatch.setattr(FakeModel, "run", no_mutations)
+    run_mutation.run_campaign(SUBJECTS, [42], 50, 1.0, prefix="camp")
+    assert pd.read_csv(fake_engine / "camp_raw.csv").empty
+
+
+def test_invalid_response_is_logged_and_never_completed(monkeypatch, fake_engine):
+    def fail(self):
+        raise run_mutation.InvalidLLMResponse("objeto inválido", "[]")
+
+    monkeypatch.setattr(FakeModel, "run", fail)
+    with pytest.raises(run_mutation.InvalidLLMResponse):
+        run_mutation.run_campaign(SUBJECTS, [42], 50, 1.0, prefix="camp")
+    failure = json.loads((fake_engine / "camp_failure.json").read_text(encoding="utf-8"))
+    assert failure["raw_response"] == "[]"
+    assert not (fake_engine / "camp_checkpoint.json").exists()

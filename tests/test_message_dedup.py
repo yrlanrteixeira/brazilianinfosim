@@ -52,7 +52,7 @@ def _init_simple(self, model, profile, llm_client, node_id):
     self.llm = llm_client
     self.inbox = []
     self.sent_messages = []
-    self.seen_rumors = set()
+    self.seen_lineages = set()
     self._tick_seen = set()
     self._tick_seen_at = -1
     self.interaction_history = []

@@ -103,28 +103,48 @@ pytest tests/ -v
 
 ## Topologias Disponíveis
 
-| Flag | Modelo | Analogia |
+| Flag | Modelo | Estrutura idealizada |
 |---|---|---|
-| `random` | Erdős-Rényi | Comunidade genérica |
-| `scale_free` | Barabási-Albert | Twitter / Instagram |
-| `small_world` | Watts-Strogatz | WhatsApp (grupos de família) |
+| `random` | Erdős-Rényi | Arestas sorteadas independentemente |
+| `scale_free` | Barabási-Albert | Crescimento por conexão preferencial |
+| `small_world` | Watts-Strogatz | Vizinhanças locais com reconexões |
+
+Essas estruturas não equivalem a plataformas reais validadas. Os parâmetros
+padrão produzem densidades diferentes; comparações entre topologias devem
+declarar esse fator.
 
 ## Intervenções Disponíveis
 
 | Flag | Efeito |
 |---|---|
-| `factcheckers_hub` | Insere fact-checkers nos nós com maior grau |
-| `factcheckers_peripheral` | Insere fact-checkers nos nós periféricos |
+| `factcheckers_hub` | Converte os 10% de nós de maior grau em verificadores |
+| `factcheckers_peripheral` | Converte os 10% de nós de menor grau em verificadores |
 | `remove_hubs` | Remove os 5 maiores supernós da rede |
 
 ---
 
-## Custo de API (estimativa)
+## Campanha com orçamento de tempo
 
-| Cenário | Chamadas | Custo (claude-haiku) |
-|---|---|---|
-| 50 agentes, 100 ticks | ~180 | ~USD 0,04 |
-| 100 agentes, 100 ticks | ~400 | ~USD 0,09 |
-| Matriz completa (60 runs) | ~10.800 | ~USD 2,40 |
+```bash
+python run_impact.py --dry-run
+python run_impact.py --hours 8 --output data/outputs/tcc2/nova_campanha
+python run_impact.py --output data/outputs/tcc2/nova_campanha --resume
+```
 
-O cache semântico reduz em ~40% as chamadas reais à API.
+A grade padrão tem 6.240 casos possíveis, com Ollama local e `llama3.1:8b`.
+O número concluído depende do orçamento e da duração das cascatas. A retomada
+preserva o prazo original e recusa mudanças no código, desenho ou modelo.
+Cache desligado, prompts e respostas auditáveis, métricas por execução e
+contrastes pareados são gravados incrementalmente. `status.json` informa o
+progresso; `campaign.json` identifica o modelo e o prazo.
+
+Os novos executores salvam em `data/outputs/tcc2`. O alcance do boato e o da
+correção são separados. Extinção exige filas vazias; encerrar por limite de
+ticks não significa extinção. Intervenções registram se e quando ocorreram.
+No CLI principal, `--intervention-tick 0` aplica antes da primeira decisão;
+`--cache-mode off` mantém amostragens independentes de reutilização do cache.
+
+Custos e quantidade de chamadas devem ser medidos no piloto. Os resultados
+dos testes controlados verificam o software; a eficácia das intervenções
+depende da campanha com LLM. O protocolo e as limitações estão em
+[RECORTE-DEFESA.md](docs/revisao-tcc-ii/RECORTE-DEFESA.md).

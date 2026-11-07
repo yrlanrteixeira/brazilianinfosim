@@ -18,7 +18,7 @@ import json
 import pytest
 
 from agents.agent import Decision
-from llm.client import LLMClient
+from llm.client import InvalidLLMResponse, LLMClient
 
 
 class FakeProvider:
@@ -76,27 +76,39 @@ def test_noisy_label_is_recovered(monkeypatch, written, expected):
     assert refused is False
 
 
-def test_unrecoverable_label_becomes_ignore_and_counts_an_error(monkeypatch):
+def test_unrecoverable_label_raises_and_counts_an_error(monkeypatch):
     client, _ = _client(monkeypatch, [_raw("BANANA", "texto")])
-    decision, _, _ = _decide(client)
-    assert decision == Decision.IGNORE
+    with pytest.raises(InvalidLLMResponse):
+        _decide(client)
     assert client.stats["parse_errors"] == 1
 
 
 def test_recovery_does_not_invent_a_distant_decision(monkeypatch):
     """Tolerância corrige typo, não adivinha intenção."""
     client, _ = _client(monkeypatch, [_raw("REFUTAR_TUDO_SEMPRE", "x")])
-    decision, _, _ = _decide(client)
-    assert decision == Decision.IGNORE
+    with pytest.raises(InvalidLLMResponse):
+        _decide(client)
     assert client.stats["parse_errors"] == 1
 
 
 def test_malformed_json_is_still_a_parse_error(monkeypatch):
     client, _ = _client(monkeypatch, ["isto nao e json"])
-    decision, _, refused = _decide(client)
-    assert decision == Decision.IGNORE
-    assert refused is False
+    with pytest.raises(InvalidLLMResponse):
+        _decide(client)
     assert client.stats["parse_errors"] == 1
+
+
+@pytest.mark.parametrize("raw", [
+    "[]", "null", "42", '"texto"', '{}',
+    _raw("REFUTAR", ""), _raw("COMPARTILHAR_COM_COMENTARIO", "  "),
+    _raw("COMPARTILHAR", None), _raw("COMPARTILHAR", []), _raw(123, "texto"),
+])
+def test_invalid_schema_never_becomes_agent_behavior(monkeypatch, raw):
+    client, _ = _client(monkeypatch, [raw])
+    with pytest.raises(InvalidLLMResponse):
+        _decide(client)
+    assert client.stats["parse_errors"] == 1
+    assert client.stats["backend_errors"] == 0
 
 
 def test_refusal_is_still_detected(monkeypatch):

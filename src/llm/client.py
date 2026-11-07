@@ -20,6 +20,7 @@ Configuração via variáveis de ambiente:
 from __future__ import annotations
 import json
 import os
+import time
 from abc import ABC, abstractmethod
 from typing import Optional
 from loguru import logger
@@ -38,12 +39,7 @@ Você recebeu a seguinte mensagem em uma rede social:
 \"\"\"{message}\"\"\"
 
 {history_block}
-
-ATENÇÃO: Se a mensagem começar com "[REFUTAÇÃO]", ela é uma CORREÇÃO de uma fake news
-que estava circulando. Considere isso ao decidir: se você é cético ou fact-checker,
-provavelmente vai REPASSAR a refutação para conter a desinformação. Se você é
-amplificador, pode IGNORAR ou QUESTIONAR a refutação por dissonância cognitiva.
-
+{refutation_block}
 Com base no seu perfil, escolha UMA das ações abaixo e responda APENAS com JSON válido:
 
 {{
@@ -59,6 +55,16 @@ Regras:
 - REFUTAR: você sabe que é falso e escreve uma correção.
 
 Responda SOMENTE com o JSON, sem texto adicional.
+"""
+
+
+# Só entra quando a mensagem recebida é mesmo uma refutação. No boato, o texto
+# informava ao agente que havia uma fake news circulando, antes de ele decidir.
+REFUTATION_BLOCK = """
+ATENÇÃO: Se a mensagem começar com "[REFUTAÇÃO]", ela é uma CORREÇÃO de uma fake news
+que estava circulando. Considere isso ao decidir: se você é cético ou fact-checker,
+provavelmente vai REPASSAR a refutação para conter a desinformação. Se você é
+amplificador, pode IGNORAR ou QUESTIONAR a refutação por dissonância cognitiva.
 """
 
 
@@ -84,13 +90,24 @@ REFUSAL_MARKERS = (
 
 CACHE_MODES = ("exact", "semantic", "off")
 
-# Falha isolada não pode derrubar uma campanha de horas, e backend fora do ar
-# não pode virar decisão de agente.
-MAX_CONSECUTIVE_BACKEND_ERRORS = 3
+# Tentativas da MESMA decisão. Falhas nunca viram comportamento do agente.
+MAX_BACKEND_ATTEMPTS = 3
 
 
 class BackendUnavailable(RuntimeError):
     """O provider parou de responder: abortar em vez de fabricar IGNORAR."""
+
+
+class ComputeBudgetExceeded(RuntimeError):
+    """Limite de tempo da campanha atingido; execução parcial não é resultado."""
+
+
+class InvalidLLMResponse(ValueError):
+    """Resposta sem decisão válida; a execução não pode entrar na amostra."""
+
+    def __init__(self, message: str, raw_response):
+        super().__init__(message)
+        self.raw_response = raw_response
 
 # Valor usado no TCC I: alterar quebra a comparação com os resultados já publicados.
 DEFAULT_TEMPERATURE = 0.3
@@ -217,23 +234,29 @@ class OllamaProvider(LLMProvider):
         model: str = "llama3.1:8b",
         base_url: str = "http://localhost:11434",
         timeout: float = 120.0,
+        seed: Optional[int] = None,
     ):
         from openai import OpenAI
         self.client = OpenAI(
             base_url=f"{base_url.rstrip('/')}/v1",
             api_key="ollama",  # Ollama ignora, mas o SDK exige algum valor
             timeout=timeout,
+            max_retries=0,
         )
         self._model = model
         self.base_url = base_url
+        self.seed = seed
+        self.request_timeout = timeout
 
     def complete(self, prompt: str, max_tokens: int = 300,
                  temperature: float = DEFAULT_TEMPERATURE) -> str:
-        response = self.client.chat.completions.create(
+        response = self.client.with_options(timeout=self.request_timeout).chat.completions.create(
             model=self._model,
             max_tokens=max_tokens,
             messages=[{"role": "user", "content": prompt}],
             temperature=temperature,
+            seed=self.seed,
+            response_format={"type": "json_object"},
         )
         return response.choices[0].message.content.strip()
 
@@ -253,6 +276,7 @@ class OllamaProvider(LLMProvider):
 def make_provider(
     provider: Optional[str] = None,
     model: Optional[str] = None,
+    seed: Optional[int] = None,
 ) -> LLMProvider:
     """
     Cria o provider com base em variáveis de ambiente ou argumentos explícitos.
@@ -261,6 +285,8 @@ def make_provider(
     provider = (provider or os.environ.get("LLM_PROVIDER", "ollama")).lower()
 
     if provider == "anthropic":
+        if seed is not None:
+            raise ValueError("Seed de geração não implementada para o provider Anthropic.")
         model = model or os.environ.get("LLM_MODEL", "claude-haiku-4-5-20251001")
         logger.info(f"LLM provider: Anthropic | model: {model}")
         return AnthropicProvider(model=model)
@@ -269,7 +295,7 @@ def make_provider(
         model = model or os.environ.get("LLM_MODEL", "llama3.1:8b")
         base_url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
         logger.info(f"LLM provider: Ollama | model: {model} | url: {base_url}")
-        return OllamaProvider(model=model, base_url=base_url)
+        return OllamaProvider(model=model, base_url=base_url, seed=seed)
 
     raise ValueError(
         f"LLM_PROVIDER desconhecido: '{provider}'. Use 'ollama' ou 'anthropic'."
@@ -296,8 +322,13 @@ class LLMClient:
         similarity_threshold: Optional[float] = None,
         cache_mode: Optional[str] = None,
         temperature: Optional[float] = None,
+        seed: Optional[int] = None,
     ):
-        self.provider = make_provider(provider=provider, model=model)
+        self.provider = make_provider(provider=provider, model=model, seed=seed)
+        self.seed = seed
+        self.deadline = None
+        self.audit_log = []
+        self.audit_context = {}
         if temperature is None:
             temperature = float(
                 os.environ.get("LLM_TEMPERATURE", DEFAULT_TEMPERATURE)
@@ -324,7 +355,7 @@ class LLMClient:
         self._parse_errors = 0
         self._refusals = 0
         self._backend_errors = 0
-        self._backend_streak = 0
+        self._normalized_labels = 0
         # Matriz de embeddings mantida para busca vetorizada
         self._emb_matrix = None
         self._emb_norms = None
@@ -419,7 +450,7 @@ class LLMClient:
         if history:
             history_lines = "\n".join(
                 f"- Você {h['decision']}: \"{h['received'][:80]}...\""
-                for h in history[-3:]
+                for h in history[-5:]
             )
             history_block = f"Suas últimas interações:\n{history_lines}\n"
 
@@ -427,6 +458,8 @@ class LLMClient:
             agent_description=agent_description,
             message=message_content,
             history_block=history_block,
+            refutation_block=(REFUTATION_BLOCK
+                              if message_content.startswith("[REFUTAÇÃO]") else ""),
         )
 
         # Cache primeiro
@@ -440,21 +473,27 @@ class LLMClient:
             )
 
         # Chama o provider
-        self._call_count += 1
-        raw = ""
-        try:
-            raw = self._call_provider(prompt)
-        except BackendUnavailable:
-            raise
-        except Exception:
-            return Decision.IGNORE, "", False
+        raw = self._call_provider(prompt)
 
+        parsed_json = False
         try:
+            if not isinstance(raw, str):
+                raise ValueError("resposta deve ser texto")
             parsed = self._extract_json(raw)
-            decision = parse_decision(str(parsed.get("decision", "")))
+            parsed_json = True
+            if not isinstance(parsed, dict):
+                raise ValueError("JSON deve ser um objeto")
+            label = parsed.get("decision")
+            content = parsed.get("content")
+            if not isinstance(label, str) or not isinstance(content, str):
+                raise ValueError("decision e content devem ser strings")
+            decision = parse_decision(label)
             if decision is None:
                 raise ValueError(f"label desconhecido: {parsed.get('decision')!r}")
-            content = parsed.get("content", "")
+            if decision in {Decision.MUTATE, Decision.REFUTE} and not content.strip():
+                raise ValueError("mutação e refutação exigem conteúdo")
+            if label != decision.value:
+                self._normalized_labels += 1
             self._add_to_cache(
                 prompt, {"decision": decision.value, "content": content, "refused": False}
             )
@@ -463,7 +502,7 @@ class LLMClient:
         except (json.JSONDecodeError, KeyError, ValueError) as e:
             # Só aqui é possível distinguir recusa de erro de formato: se não
             # veio JSON e o texto casa com um marcador de recusa, foi guardrail.
-            if raw and is_refusal(raw):
+            if not parsed_json and isinstance(raw, str) and is_refusal(raw):
                 self._refusals += 1
                 logger.info(
                     f"Recusa do modelo detectada ({self._refusals} total). "
@@ -478,9 +517,9 @@ class LLMClient:
             self._parse_errors += 1
             logger.warning(
                 f"Erro ao parsear resposta LLM ({self._parse_errors} total): {e}. "
-                f"Usando IGNORAR."
+                f"Execução interrompida."
             )
-            return Decision.IGNORE, "", False
+            raise InvalidLLMResponse(str(e), raw) from e
 
     def _call_provider(self, prompt: str) -> str:
         """
@@ -488,26 +527,37 @@ class LLMClient:
         infraestrutura, o que falha depois é conteúdo. Misturar os dois faz
         um backend fora do ar virar uma campanha inteira de IGNORAR.
         """
-        try:
-            raw = self.provider.complete(
-                prompt=prompt, max_tokens=300, temperature=self.temperature
-            )
-        except Exception as e:
-            self._backend_errors += 1
-            self._backend_streak += 1
-            if self._backend_streak >= MAX_CONSECUTIVE_BACKEND_ERRORS:
+        for attempt in range(1, MAX_BACKEND_ATTEMPTS + 1):
+            if self.deadline is not None:
+                remaining = self.deadline - time.monotonic()
+                if remaining <= 0:
+                    raise ComputeBudgetExceeded("Tempo de processamento esgotado.")
+                if isinstance(self.provider, OllamaProvider):
+                    self.provider.request_timeout = min(120.0, remaining)
+            self._call_count += 1
+            started = time.monotonic()
+            event = {"call": self._call_count, "prompt": prompt,
+                     "seed": self.seed, "temperature": self.temperature,
+                     **self.audit_context}
+            try:
+                raw = self.provider.complete(
+                    prompt=prompt, max_tokens=300, temperature=self.temperature
+                )
+                event["raw_response"] = raw
+                return raw
+            except Exception as e:
+                event["error"] = f"{type(e).__name__}: {e}"
+                self._backend_errors += 1
+                if attempt < MAX_BACKEND_ATTEMPTS:
+                    logger.warning(f"Falha no provider; repetindo a mesma decisão ({attempt}).")
+                    continue
                 raise BackendUnavailable(
-                    f"{self._backend_streak} falhas seguidas ao chamar "
+                    f"{attempt} falhas na mesma decisão ao chamar "
                     f"{self.provider.name}: {type(e).__name__}: {e}"
                 ) from e
-            logger.error(
-                f"Falha ao chamar o provider ({self._backend_errors} total): "
-                f"{type(e).__name__}: {e}"
-            )
-            raise
-
-        self._backend_streak = 0
-        return raw
+            finally:
+                event["elapsed_seconds"] = time.monotonic() - started
+                self.audit_log.append(event)
 
     @property
     def stats(self) -> dict:
@@ -519,10 +569,12 @@ class LLMClient:
             "model": self.provider.model,
             "cache_mode": self.cache_mode,
             "temperature": self.temperature,
+            "llm_seed": self.seed,
             "api_calls": self._call_count,
             "cache_hits": self._cache_hits,
             "cache_hit_rate": f"{hit_rate:.1%}",
             "parse_errors": self._parse_errors,
+            "normalized_labels": self._normalized_labels,
             "backend_errors": self._backend_errors,
             "refusals": self._refusals,
             "refusal_rate": f"{refusal_rate:.1%}",

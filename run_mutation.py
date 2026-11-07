@@ -21,6 +21,7 @@ depois consolida com `--from-raw "data/outputs/mut_*_raw.csv"`.
 """
 import argparse
 import glob
+import json
 import sys
 import unicodedata
 from pathlib import Path
@@ -30,12 +31,13 @@ import pandas as pd
 from simulation.engine import SimulationConfig, InfoSimModel
 from simulation.messages import SUBJECTS
 from network.topology import Topology
-from llm.client import BackendUnavailable
+from llm.client import BackendUnavailable, InvalidLLMResponse
+from simulation.persistence import atomic_json, manifest
 from metrics.analysis import (
     summarize_result, mutation_index, mutation_by_hop, plot_mutation_by_hop,
 )
 
-OUT_DIR = Path("data/outputs")
+OUT_DIR = Path("data/outputs/tcc2")
 DEFAULT_SEEDS = [42, 123, 999, 7, 2024, 55, 2026, 314, 1, 88]
 
 
@@ -63,7 +65,7 @@ def parse_args():
     p.add_argument("--prefix", type=str, default="mutation",
                    help="prefixo dos CSVs de saída")
     p.add_argument("--temperature", type=float, default=1.0,
-                   help="temperatura do modelo (a 0.3 a mutação não ocorre)")
+                   help="temperatura do modelo (fixar antes da campanha)")
     p.add_argument("--from-raw", type=str, default=None,
                    help="agrega CSVs crus já existentes (glob) sem rodar o LLM")
     p.add_argument("--resume", action="store_true",
@@ -82,15 +84,6 @@ def load_raw(pattern: str) -> list[dict]:
     return pd.concat(dfs, ignore_index=True).to_dict("records")
 
 
-def done_pairs(prefix: str) -> set[tuple[str, int]]:
-    """Pares (assunto, semente) já gravados, para retomar de onde parou."""
-    runs_csv = OUT_DIR / f"{prefix}_runs.csv"
-    if not runs_csv.exists():
-        return set()
-    df = pd.read_csv(runs_csv)
-    return set(zip(df["subject"], df["seed"]))
-
-
 def run_campaign(subjects: dict, seeds: list[int], n_agents: int,
                  temperature: float, prefix: str,
                  resume: bool = False) -> tuple[list, list]:
@@ -99,14 +92,26 @@ def run_campaign(subjects: dict, seeds: list[int], n_agents: int,
 
     Campanha longa cai: gravar só no fim perde tudo o que já rodou.
     """
+    if Path(prefix).name != prefix or not prefix:
+        raise ValueError("prefix deve ser um nome simples de arquivo")
+    metadata = manifest({"subjects": subjects, "n_agents": n_agents,
+                         "temperature": temperature, "cache_mode": "off",
+                         "topology": Topology.SCALE_FREE.value, "max_ticks": 100,
+                         "inject_at": "hub", "intervention": None})
     rows, raw = [], []
-    done = done_pairs(prefix) if resume else set()
-    if done:
-        print(f"Retomando: {len(done)} run(s) já concluído(s)", flush=True)
-        rows = pd.read_csv(OUT_DIR / f"{prefix}_runs.csv").to_dict("records")
-        raw_csv = OUT_DIR / f"{prefix}_raw.csv"
-        if raw_csv.exists():
-            raw = pd.read_csv(raw_csv).to_dict("records")
+    checkpoint = OUT_DIR / f"{prefix}_checkpoint.json"
+    existing_csv = any((OUT_DIR / f"{prefix}_{kind}.csv").exists() for kind in ("runs", "raw"))
+    if resume and checkpoint.exists():
+        saved = json.loads(checkpoint.read_text(encoding="utf-8"))
+        if saved["manifest"] != metadata:
+            raise ValueError("Configuração, modelo ou código mudou. Use outro prefixo de campanha.")
+        rows, raw = saved["rows"], saved["raw"]
+        _persist(rows, raw, prefix, metadata)  # repara exportações interrompidas
+    elif resume and existing_csv:
+        raise ValueError("CSV sem manifesto verificável. Use outro prefixo de campanha.")
+    elif not resume and (checkpoint.exists() or existing_csv):
+        raise ValueError("Campanha já existe. Use --resume ou outro prefixo.")
+    done = {(r["subject"], r["seed"]) for r in rows}
 
     total = len(subjects) * len(seeds)
     i = 0
@@ -124,7 +129,15 @@ def run_campaign(subjects: dict, seeds: list[int], n_agents: int,
                 inject_at="hub", enable_cache=False,
                 temperature=temperature,
             )
-            result = InfoSimModel(cfg).run()
+            try:
+                result = InfoSimModel(cfg).run()
+            except (BackendUnavailable, InvalidLLMResponse) as error:
+                atomic_json(OUT_DIR / f"{prefix}_failure.json", {
+                    "manifest": metadata, "subject": subject, "seed": seed,
+                    "error": type(error).__name__, "detail": str(error),
+                    "raw_response": getattr(error, "raw_response", None),
+                })
+                raise
 
             # O embedder roda depois, em lote.
             s = summarize_result(result, with_mutation=False)
@@ -145,7 +158,8 @@ def run_campaign(subjects: dict, seeds: list[int], n_agents: int,
             raw.extend(dict(m, subject=subject, seed=seed)
                        for m in result.mutations)
 
-            _persist(rows, raw, prefix)
+            _persist(rows, raw, prefix, metadata)
+            done.add((subject, seed))
 
             print(f"[{i}/{total}] {subject:20s} seed={seed} -> "
                   f"alcance {s['final_reach_pct']:.0f}%, "
@@ -154,11 +168,14 @@ def run_campaign(subjects: dict, seeds: list[int], n_agents: int,
     return rows, raw
 
 
-def _persist(rows: list[dict], raw: list[dict], prefix: str) -> None:
+def _persist(rows: list[dict], raw: list[dict], prefix: str, metadata: dict) -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
+    atomic_json(OUT_DIR / f"{prefix}_checkpoint.json",
+                {"manifest": metadata, "rows": rows, "raw": raw})
     pd.DataFrame(rows).to_csv(OUT_DIR / f"{prefix}_runs.csv", index=False)
-    if raw:
-        pd.DataFrame(raw).to_csv(OUT_DIR / f"{prefix}_raw.csv", index=False)
+    pd.DataFrame(raw, columns=["hop", "content", "parent_content", "original_content",
+                              "sender_id", "subject", "seed"]).to_csv(
+        OUT_DIR / f"{prefix}_raw.csv", index=False)
 
 
 def main():
@@ -181,7 +198,7 @@ def main():
         rows, raw = run_campaign(subjects, seeds, args.n_agents,
                                  args.temperature, args.prefix,
                                  resume=args.resume)
-    except BackendUnavailable as e:
+    except (BackendUnavailable, InvalidLLMResponse, ValueError) as e:
         runs_csv = OUT_DIR / f"{args.prefix}_runs.csv"
         onde = (f"Os runs concluídos antes da falha estão em {runs_csv}."
                 if runs_csv.exists() else "Nenhum run foi gravado.")

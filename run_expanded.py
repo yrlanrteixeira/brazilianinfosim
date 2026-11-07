@@ -18,6 +18,9 @@ import pandas as pd
 from simulation.engine import SimulationConfig, InfoSimModel
 from network.topology import Topology, build_network, network_stats
 from metrics.analysis import summarize_result
+from simulation.persistence import campaign_directory, save_result
+
+OUT_DIR = campaign_directory("expanded")
 
 TOPOS = [Topology.RANDOM, Topology.SCALE_FREE, Topology.SMALL_WORLD]
 MSG = {
@@ -30,13 +33,17 @@ SEEDS = [42, 123, 999, 7, 2024]
 INJ_SEEDS = [42, 123, 999, 7, 2024, 55]
 
 
-def run_one(topo, interv, msg_name, seed, inject_at="hub"):
+def run_one(topo, interv, msg_name, seed, inject_at="hub", block="matrix"):
     cfg = SimulationConfig(
         n_agents=50, topology=topo, max_ticks=100, seed=seed,
         initial_message=MSG[msg_name], intervention=interv,
         inject_at=inject_at,
+        intervention_tick=0, enable_cache=False, cache_mode="off",
     )
-    s = summarize_result(InfoSimModel(cfg).run())
+    result = InfoSimModel(cfg).run()
+    save_result(result, OUT_DIR / block,
+                f"{topo.value}_{interv or 'none'}_{msg_name}_{seed}_{inject_at}")
+    s = summarize_result(result, with_mutation=False)
     s.update(msg=msg_name, seed=seed, inject_at=inject_at)
     return s
 
@@ -52,9 +59,9 @@ def block_a():
                     i += 1
                     s = run_one(topo, interv, msg_name, seed)
                     rows.append(s)
+                    pd.DataFrame(rows).to_csv(OUT_DIR / "expanded_matrix.csv", index=False)
                     print(f"[A {i}/{total}] {topo.value} {interv} {msg_name} "
                           f"seed={seed} -> {s['final_reach_pct']:.0f}%", flush=True)
-    pd.DataFrame(rows).to_csv("data/outputs/expanded_matrix.csv", index=False)
     print(f"[A] expanded_matrix.csv salvo ({len(rows)} runs)", flush=True)
 
 
@@ -65,11 +72,11 @@ def block_b():
         for inject in ["hub", "influencer", "random"]:
             for seed in INJ_SEEDS:
                 i += 1
-                s = run_one(topo, None, "politica", seed, inject_at=inject)
+                s = run_one(topo, None, "politica", seed, inject_at=inject, block="injection")
                 rows.append(s)
+                pd.DataFrame(rows).to_csv(OUT_DIR / "injection_experiment.csv", index=False)
                 print(f"[B {i}/{total}] {topo.value} inject={inject} "
                       f"seed={seed} -> {s['final_reach_pct']:.0f}%", flush=True)
-    pd.DataFrame(rows).to_csv("data/outputs/injection_experiment.csv", index=False)
     print(f"[B] injection_experiment.csv salvo ({len(rows)} runs)", flush=True)
 
 
@@ -83,7 +90,8 @@ def block_c():
             rows.append(st)
     df = pd.DataFrame(rows)
     agg = df.groupby("topology").mean(numeric_only=True).round(3)
-    agg.to_csv("data/outputs/network_structure.csv")
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    agg.to_csv(OUT_DIR / "network_structure.csv")
     print("[C] network_structure.csv salvo", flush=True)
     print(agg, flush=True)
 
