@@ -134,9 +134,12 @@ def linhas_contraste(contrastes: Path) -> list[dict]:
 
 def figura_contrastes(linhas: list[dict], destino: Path) -> Path:
     fig, ax = plt.subplots(figsize=(6.4, 7.6))
-    rotulos, posicoes = [], []
-    for i, linha in enumerate(reversed(linhas)):
+    rotulos, posicoes, fronteiras = [], [], []
+    invertidas = list(reversed(linhas))
+    for i, linha in enumerate(invertidas):
         y = i
+        if i and linha["familia"] != invertidas[i - 1]["familia"]:
+            fronteiras.append(y - 0.5)
         posicoes.append(y)
         rotulos.append(linha["condicao"])
         for prefixo, cor, marcador, deslocamento in (
@@ -150,6 +153,9 @@ def figura_contrastes(linhas: list[dict], destino: Path) -> Path:
             ax.plot(media, y + deslocamento, marcador, color=cor, markersize=5,
                     markeredgecolor="white", markeredgewidth=0.6)
     ax.axvline(0, color=TINTA_FRACA, linewidth=1.0, linestyle=":")
+    # Sem isso o leitor não vê onde uma família termina e a outra começa.
+    for y in fronteiras:
+        ax.axhline(y, color=GRADE, linewidth=0.8)
     ax.set_yticks(posicoes)
     ax.set_yticklabels(rotulos, fontsize=7.5)
     ax.set_ylim(-0.8, len(linhas) - 0.2)
