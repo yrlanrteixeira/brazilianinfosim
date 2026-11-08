@@ -1,5 +1,5 @@
 """
-tests/test_figuras.py
+tests/test_figures.py
 
 Preparo dos dados das figuras. O desenho em si não é testado; o que erra em
 silêncio é a agregação por trás dele.
@@ -12,13 +12,13 @@ esconderia justamente o achado.
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "analysis"))
 
-from figuras import ESTIMULOS, ecdf, load_runs, media_por_estimulo
+from figures import STIMULI, ecdf, load_runs, mean_by_stimulus
 
 
-def _run(estimulo="health_dna_a", legacy=63.0, strict=2.0):
-    return {"stimulus_id": estimulo, "reach_legacy_pct": str(legacy),
+def _run(stimulus="health_dna_a", legacy=63.0, strict=2.0):
+    return {"stimulus_id": stimulus, "reach_legacy_pct": str(legacy),
             "reach_strict_pct": str(strict)}
 
 
@@ -44,21 +44,21 @@ def test_a_single_run_still_produces_a_curve():
 # ── Agregação por estímulo ────────────────────────────────────────────────
 
 def test_the_mean_per_stimulus_keeps_the_declared_order():
-    rows = [_run(e, legacy=i * 10.0) for i, e in enumerate(ESTIMULOS)]
-    assert media_por_estimulo(rows, "reach_legacy_pct") == [0.0, 10.0, 20.0, 30.0]
+    rows = [_run(e, legacy=i * 10.0) for i, e in enumerate(STIMULI)]
+    assert mean_by_stimulus(rows, "reach_legacy_pct") == [0.0, 10.0, 20.0, 30.0]
 
 
 def test_a_stimulus_without_runs_does_not_break_the_figure():
     rows = [_run("health_dna_a", legacy=50.0)]
-    medias = media_por_estimulo(rows, "reach_legacy_pct")
-    assert medias[ESTIMULOS.index("health_dna_a")] == 50.0
-    assert medias[ESTIMULOS.index("benefit_auto_a")] == 0.0
+    medias = mean_by_stimulus(rows, "reach_legacy_pct")
+    assert medias[STIMULI.index("health_dna_a")] == 50.0
+    assert medias[STIMULI.index("benefit_auto_a")] == 0.0
 
 
 def test_the_two_columns_are_read_independently():
     rows = [_run(legacy=63.19, strict=2.0), _run(legacy=63.19, strict=2.0)]
-    assert media_por_estimulo(rows, "reach_legacy_pct")[2] == 63.19
-    assert media_por_estimulo(rows, "reach_strict_pct")[2] == 2.0
+    assert mean_by_stimulus(rows, "reach_legacy_pct")[2] == 63.19
+    assert mean_by_stimulus(rows, "reach_strict_pct")[2] == 2.0
 
 
 # ── Entrada ───────────────────────────────────────────────────────────────

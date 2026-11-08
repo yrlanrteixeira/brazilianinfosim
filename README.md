@@ -29,13 +29,23 @@ brazilianinfosim/
 │   └── metrics/
 │       ├── analysis.py       # Métricas e visualizações
 │       └── content_review.py # Medição por conteúdo
-├── scripts/
+├── scripts/                  # Geram dados: rodam campanhas
 │   ├── run_simulation.py     # Simulação única ou matriz completa
 │   ├── run_impact.py         # Campanha de intervenções com orçamento de tempo
 │   ├── run_research.py       # Campanha de pesquisa com contrastes pareados
 │   ├── run_content_review.py # Revisão por conteúdo de uma campanha
 │   └── legacy/               # Runners das campanhas históricas (expandida, assuntos, suplementar, mutação)
-├── analysis/                 # Análise da campanha de pesquisa e referência externa
+├── analysis/                 # Consomem dados: medem uma campanha já gravada
+│   ├── recompute_lineage.py  # Reconstrói a profundidade de refutação do registro
+│   ├── reach_tables.py       # Tabelas de alcance com bootstrap agrupado por seed
+│   ├── contrasts.py          # Contrastes pareados por condição, nas duas métricas
+│   ├── compare_seir.py       # Comparação pareada com referências SIR e SEIR
+│   ├── sample_texts.py       # Amostra estratificada para anotação de postura
+│   ├── figures.py            # Figuras do artigo
+│   ├── analyze_completion.py # Análise das questões de pesquisa
+│   ├── benchmark_external.py # Comparação com publicadores de imagens checadas
+│   ├── fetch_reference_data.py   # Metadados do conjunto externo de referência
+│   └── measure_semantic_change.py # Distância entre textos publicados
 ├── notebooks/                # Execução de fatias da campanha no Colab
 ├── tests/                    # Suíte pytest, sem chamadas reais a LLM
 ├── data/outputs/             # Resultados, gravações e CSVs (fora do git)
@@ -294,4 +304,27 @@ python analysis/measure_semantic_change.py data/outputs/tcc2/conclusao --model-p
 # Referência externa SIR/SEIR com metadados brasileiros do ICWSM (Zenodo).
 python analysis/fetch_reference_data.py --output data/outputs/tcc2/external/metadata --member icwsm_dataset_share/brazil/misinfo_anonymized.txt
 python analysis/benchmark_external.py data/outputs/tcc2/external/metadata/misinfo_anonymized.txt --campaign data/outputs/tcc2/conclusao --annotations <anotacoes.json> --output data/outputs/tcc2/conclusao/benchmark
+```
+
+### Medição da linhagem
+
+A ação de refutar inverte a marca de linhagem da mensagem, o que é necessário
+para a entrega da correção mas a torna imprópria para classificar. Estes
+scripts reconstroem a profundidade de refutação a partir do registro já
+gravado, sem reexecutar a campanha. Rode o recálculo primeiro: os demais leem a
+saída dele.
+
+```bash
+# Reconstrói a profundidade e reescreve o alcance.
+python analysis/recompute_lineage.py data/outputs/tcc2/conclusao
+# Tabelas de alcance. --expected para a análise se a cópia estiver incompleta.
+python analysis/reach_tables.py data/outputs/tcc2/conclusao --expected 1723
+# Contrastes por condição; --bonferroni ajusta o nível pelo número de condições.
+python analysis/contrasts.py data/outputs/tcc2/conclusao --bonferroni
+# Referências SIR e SEIR no mesmo grafo, com ajuste e avaliação em seeds disjuntas.
+python analysis/compare_seir.py data/outputs/tcc2/conclusao
+# Amostra estratificada para anotação de postura.
+python analysis/sample_texts.py data/outputs/tcc2/conclusao --output amostra_anotacao.csv
+# Figuras a 300 dpi.
+python analysis/figures.py data/outputs/tcc2/conclusao --output figuras
 ```

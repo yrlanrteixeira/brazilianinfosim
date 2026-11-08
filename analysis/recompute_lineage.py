@@ -10,7 +10,7 @@ o alcance estrito (profundidade 0), o ambíguo (2 em diante) e o limite
 superior. A coluna `reach_legacy_pct` reproduz a contagem antiga e serve de
 conferência: divergir de `final_reach_pct` indica reconstrução malfeita.
 
-    python scripts/recompute_lineage.py data/outputs/tcc2/conclusao
+    python analysis/recompute_lineage.py data/outputs/tcc2/conclusao
 """
 
 from __future__ import annotations
@@ -80,8 +80,8 @@ def load_result(path: Path) -> dict:
     nomeando o arquivo é melhor do que seguir com a campanha pela metade."""
     try:
         return json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, UnicodeDecodeError) as erro:
-        raise SystemExit(f"Resultado ilegível em {path}: {erro}. "
+    except (json.JSONDecodeError, UnicodeDecodeError) as error:
+        raise SystemExit(f"Resultado ilegível em {path}: {error}. "
                          "A cópia da campanha provavelmente está incompleta.")
 
 

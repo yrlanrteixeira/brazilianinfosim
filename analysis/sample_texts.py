@@ -10,9 +10,10 @@ cai em um único estrato.
 Grava um CSV com uma linha por texto sorteado, a alegação original contra a qual
 ele será julgado, e as colunas que o anotador preenche. A coluna `peso` é a
 razão entre o total do estrato e o tamanho sorteado, e é o que permite voltar da
-amostra para a população.
+amostra para a população. Os estratos e rótulos ficam em português porque é o
+anotador quem os lê.
 
-    python scripts/amostrar_textos.py data/outputs/tcc2/conclusao --saida amostra_anotacao.csv
+    python analysis/sample_texts.py data/outputs/tcc2/conclusao --output amostra_anotacao.csv
 """
 
 from __future__ import annotations
@@ -20,14 +21,13 @@ from __future__ import annotations
 import argparse
 import csv
 import hashlib
-import json
 import random
 from pathlib import Path
 
 from recompute_lineage import depth_by_content, id_column, load_result
 
-ESTRATOS = ("boato", "correcao", "ambiguo")
-TAMANHOS = {"boato": 60, "correcao": 60, "ambiguo": 180}
+STRATA = ("boato", "correcao", "ambiguo")
+SIZES = {"boato": 60, "correcao": 60, "ambiguo": 180}
 
 FIELDS = [
     "text_id", "estrato", "refutation_depth", "subject", "run_id", "node_id",
@@ -35,7 +35,7 @@ FIELDS = [
     "rotulo", "justificativa", "anotador",
 ]
 
-ROTULOS = ("apoia", "rejeita", "misto", "nao_relacionado")
+LABELS = ("apoia", "rejeita", "misto", "nao_relacionado")
 
 
 def stratum(depth: int) -> str:
@@ -110,7 +110,7 @@ def draw(pool: dict, sizes: dict[str, int], seed: int) -> list[dict]:
     ordem de leitura dos arquivos, só da seed."""
     rng = random.Random(seed)
     sample = []
-    for name in ESTRATOS:
+    for name in STRATA:
         group = sorted((r for r in pool.values() if r["estrato"] == name),
                        key=lambda r: r["text_id"])
         size = min(sizes[name], len(group))
@@ -124,12 +124,12 @@ def draw(pool: dict, sizes: dict[str, int], seed: int) -> list[dict]:
 
 
 def parse_sizes(text: str) -> dict[str, int]:
-    sizes = dict(TAMANHOS)
+    sizes = dict(SIZES)
     for part in text.split(","):
         name, _, value = part.partition("=")
         name = name.strip()
-        if name not in ESTRATOS:
-            raise SystemExit(f"Estrato desconhecido: {name}. Use {', '.join(ESTRATOS)}.")
+        if name not in STRATA:
+            raise SystemExit(f"Estrato desconhecido: {name}. Use {', '.join(STRATA)}.")
         sizes[name] = int(value)
     return sizes
 
@@ -137,12 +137,12 @@ def parse_sizes(text: str) -> dict[str, int]:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("campaign", type=Path, help="pasta da campanha ou de um shard")
-    parser.add_argument("--saida", type=Path, default=Path("amostra_anotacao.csv"))
+    parser.add_argument("--output", type=Path, default=Path("amostra_anotacao.csv"))
     parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--tamanhos", default="boato=60,correcao=60,ambiguo=180")
+    parser.add_argument("--sizes", default="boato=60,correcao=60,ambiguo=180")
     args = parser.parse_args()
 
-    sizes = parse_sizes(args.tamanhos)
+    sizes = parse_sizes(args.sizes)
     folders = ([args.campaign] if (args.campaign / "runs.csv").exists()
                else sorted(p.parent for p in args.campaign.glob("*/runs.csv")))
     if not folders:
@@ -155,17 +155,17 @@ def main() -> None:
         raise SystemExit("Nenhum texto publicado com auditoria de mensagens.")
 
     sample = draw(pool, sizes, args.seed)
-    with args.saida.open("w", newline="", encoding="utf-8") as out:
+    with args.output.open("w", newline="", encoding="utf-8") as out:
         writer = csv.DictWriter(out, fieldnames=FIELDS)
         writer.writeheader()
         writer.writerows(sample)
 
-    print(f"{len(pool)} textos distintos, {len(sample)} sorteados em {args.saida}")
-    for name in ESTRATOS:
+    print(f"{len(pool)} textos distintos, {len(sample)} sorteados em {args.output}")
+    for name in STRATA:
         total = sum(1 for r in pool.values() if r["estrato"] == name)
         drawn = sum(1 for r in sample if r["estrato"] == name)
         print(f"    {name}: {drawn} de {total}")
-    print(f"Rótulos aceitos na coluna `rotulo`: {', '.join(ROTULOS)}")
+    print(f"Rótulos aceitos na coluna `rotulo`: {', '.join(LABELS)}")
 
 
 if __name__ == "__main__":

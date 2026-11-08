@@ -6,9 +6,10 @@ compartilham a seed compartilham o grafo e a população inicial, então não s�
 independentes e a reamostragem sorteia seeds inteiras.
 
 Grava em `tabelas/` uma linha por medida, com média, mediana, intervalo de 95% e
-o número de seeds que sustenta cada linha.
+o número de seeds que sustenta cada linha. Os cabeçalhos ficam em português
+porque alimentam as tabelas do artigo.
 
-    python scripts/analisar_corrigido.py data/outputs/tcc2/conclusao
+    python analysis/reach_tables.py data/outputs/tcc2/conclusao
 """
 
 from __future__ import annotations
@@ -22,7 +23,7 @@ from statistics import median
 RESAMPLES = 10000
 CLUSTER = "seed"
 
-ALCANCES = [
+REACH_COLUMNS = [
     ("reach_legacy_pct", "Alcance pela contagem antiga"),
     ("reach_strict_pct", "Alcance estrito do boato"),
     ("correction_strict_pct", "Alcance da correção"),
@@ -35,8 +36,8 @@ def cluster_totals(rows: list[dict], value, cluster: str = CLUSTER) -> list[tupl
     """Soma e contagem por grupo. Reduz cada reamostragem ao número de grupos."""
     totals: dict[str, tuple[float, int]] = {}
     for row in rows:
-        soma, n = totals.get(row[cluster], (0.0, 0))
-        totals[row[cluster]] = (soma + value(row), n + 1)
+        acc, n = totals.get(row[cluster], (0.0, 0))
+        totals[row[cluster]] = (acc + value(row), n + 1)
     return list(totals.values())
 
 
@@ -50,33 +51,33 @@ def clustered_ci(totals: list[tuple[float, int]], seed: int = 0,
     draws = []
     size = len(totals)
     for _ in range(resamples):
-        soma = contagem = 0.0
+        acc = count = 0.0
         for _ in range(size):
-            parcela, n = totals[rng.randrange(size)]
-            soma += parcela
-            contagem += n
-        draws.append(soma / contagem if contagem else 0.0)
+            part, n = totals[rng.randrange(size)]
+            acc += part
+            count += n
+        draws.append(acc / count if count else 0.0)
     draws.sort()
-    baixo = max(0, int((1 - level) / 2 * resamples))
-    alto = min(resamples - 1, int((1 + level) / 2 * resamples) - 1)
-    return (round(draws[baixo], 2), round(draws[alto], 2))
+    low = max(0, int((1 - level) / 2 * resamples))
+    high = min(resamples - 1, int((1 + level) / 2 * resamples) - 1)
+    return (round(draws[low], 2), round(draws[high], 2))
 
 
 def summarize(rows: list[dict], value, label: str, cluster: str = CLUSTER) -> dict:
     if not rows:
         return {"medida": label, "n": 0, "seeds": 0, "media": "", "mediana": "",
                 "ic95_baixo": "", "ic95_alto": ""}
-    valores = [value(row) for row in rows]
+    values = [value(row) for row in rows]
     totals = cluster_totals(rows, value, cluster)
-    baixo, alto = clustered_ci(totals)
+    low, high = clustered_ci(totals)
     return {
         "medida": label,
         "n": len(rows),
         "seeds": len(totals),
-        "media": round(sum(valores) / len(valores), 2),
-        "mediana": round(median(valores), 2),
-        "ic95_baixo": baixo,
-        "ic95_alto": alto,
+        "media": round(sum(values) / len(values), 2),
+        "mediana": round(median(values), 2),
+        "ic95_baixo": low,
+        "ic95_alto": high,
     }
 
 
@@ -84,21 +85,21 @@ def pct(column: str):
     return lambda row: float(row[column])
 
 
-def artefato(row: dict) -> float:
+def artifact(row: dict) -> float:
     """O tamanho do defeito: quanto a contagem antiga somava além do boato."""
     return float(row["reach_legacy_pct"]) - float(row["reach_strict_pct"])
 
 
-def so_emissor(row: dict) -> float:
+def emitter_only(row: dict) -> float:
     """Uma exposição em n agentes é o emissor sozinho, e nada mais circulou."""
     return 1.0 if float(row["reach_strict_pct"]) <= 100.0 / float(row["n_agents"]) + 1e-9 else 0.0
 
 
-def conferir_total(rows: list[dict], esperado: int) -> None:
+def check_total(rows: list[dict], expected: int) -> None:
     """Cópia parcial de campanha produz tabela com cara de completa. Quem sabe o
     total declara, e a análise para antes de gerar número errado."""
-    if esperado and len(rows) != esperado:
-        raise SystemExit(f"Esperava {esperado} execuções e carreguei {len(rows)}. "
+    if expected and len(rows) != expected:
+        raise SystemExit(f"Esperava {expected} execuções e carreguei {len(rows)}. "
                          "A cópia da campanha está incompleta ou desatualizada.")
 
 
@@ -136,43 +137,43 @@ def write(folder: Path, name: str, lines: list[dict]) -> Path:
     return path
 
 
-def tabela_alcances(rows: list[dict]) -> list[dict]:
+def reach_table(rows: list[dict]) -> list[dict]:
     """O escopo vai na tabela: sem controle identificado, a linha descreve a
     campanha inteira, e isso não pode ficar implícito."""
     base = controls(rows)
-    escopo = "controles" if base else "todas as execucoes"
-    return [{**summarize(base or rows, pct(column), label), "escopo": escopo}
-            for column, label in ALCANCES]
+    scope = "controles" if base else "todas as execucoes"
+    return [{**summarize(base or rows, pct(column), label), "escopo": scope}
+            for column, label in REACH_COLUMNS]
 
 
-def tabela_artefato(rows: list[dict]) -> list[dict]:
+def artifact_table(rows: list[dict]) -> list[dict]:
     return [
-        summarize(rows, artefato, "Diferença pareada, contagem antiga menos estrito (p.p.)"),
-        summarize(rows, so_emissor, "Proporção de execuções em que o boato não passou do emissor"),
+        summarize(rows, artifact, "Diferença pareada, contagem antiga menos estrito (p.p.)"),
+        summarize(rows, emitter_only, "Proporção de execuções em que o boato não passou do emissor"),
     ]
 
 
-def tabela_por_grupo(rows: list[dict], chave: str, filtro=None) -> list[dict]:
+def table_by_group(rows: list[dict], key: str, keep=None) -> list[dict]:
     """Uma linha por valor da coluna, nas duas métricas mais a proporção presa
     ao emissor. Serve para estímulo, topologia e fração de céticos."""
-    alvo = [row for row in rows if filtro is None or filtro(row)]
+    target = [row for row in rows if keep is None or keep(row)]
     lines = []
-    for valor in sorted({row[chave] for row in alvo}):
-        grupo = [row for row in alvo if row[chave] == valor]
+    for value in sorted({row[key] for row in target}):
+        group = [row for row in target if row[key] == value]
         for column, label in (("reach_strict_pct", "estrito"), ("reach_legacy_pct", "marca")):
-            lines.append(summarize(grupo, pct(column), f"{valor}: alcance {label}"))
-        lines.append(summarize(grupo, so_emissor, f"{valor}: só o emissor"))
+            lines.append(summarize(group, pct(column), f"{value}: alcance {label}"))
+        lines.append(summarize(group, emitter_only, f"{value}: só o emissor"))
     return lines
 
 
-def tabela_por_estimulo(rows: list[dict]) -> list[dict]:
-    return tabela_por_grupo(rows, "stimulus_id")
+def table_by_stimulus(rows: list[dict]) -> list[dict]:
+    return table_by_group(rows, "stimulus_id")
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("campaign", type=Path, help="pasta da campanha ou de um shard")
-    parser.add_argument("--esperado", type=int, default=0,
+    parser.add_argument("--expected", type=int, default=0,
                         help="total de execuções da campanha; para a análise se não bater")
     args = parser.parse_args()
 
@@ -180,29 +181,29 @@ def main() -> None:
     if not rows:
         raise SystemExit(f"Nenhum runs_corrigido.csv com alcance em {args.campaign}. "
                          "Rode recompute_lineage.py antes.")
-    conferir_total(rows, args.esperado)
+    check_total(rows, args.expected)
 
-    saida = args.campaign / "tabelas"
-    saida.mkdir(exist_ok=True)
-    tabelas = [
-        ("alcances.csv", tabela_alcances(rows)),
-        ("artefato.csv", tabela_artefato(rows)),
-        ("por_estimulo.csv", tabela_por_estimulo(rows)),
+    out_dir = args.campaign / "tabelas"
+    out_dir.mkdir(exist_ok=True)
+    tables = [
+        ("alcances.csv", reach_table(rows)),
+        ("artefato.csv", artifact_table(rows)),
+        ("por_estimulo.csv", table_by_stimulus(rows)),
         # Topologia sobre a campanha inteira, não só a família que a varia:
         # toda execução tem uma, e o recorte da família perde a maior parte.
-        ("por_topologia.csv", tabela_por_grupo(rows, "topology")),
-        ("por_ceticos.csv", tabela_por_grupo(
+        ("por_topologia.csv", table_by_group(rows, "topology")),
+        ("por_ceticos.csv", table_by_group(
             rows, "condition", lambda row: row["family"] == "skeptics")),
     ]
-    for name, lines in tabelas:
+    for name, lines in tables:
         if lines:
-            print(f"{write(saida, name, lines)}")
+            print(f"{write(out_dir, name, lines)}")
 
     print(f"\n{len(rows)} execuções, {len(controls(rows))} controles, "
           f"{len({row[CLUSTER] for row in rows})} seeds estruturais")
-    for linha in tabela_artefato(rows) + tabela_alcances(rows):
-        print(f"  {linha['medida']}: media {linha['media']}, mediana {linha['mediana']}, "
-              f"IC95 [{linha['ic95_baixo']}, {linha['ic95_alto']}]")
+    for line in artifact_table(rows) + reach_table(rows):
+        print(f"  {line['medida']}: media {line['media']}, mediana {line['mediana']}, "
+              f"IC95 [{line['ic95_baixo']}, {line['ic95_alto']}]")
 
 
 if __name__ == "__main__":

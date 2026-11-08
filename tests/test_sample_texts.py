@@ -1,5 +1,5 @@
 """
-tests/test_amostrar_textos.py
+tests/test_sample_texts.py
 
 Sorteio da amostra de anotação de postura.
 
@@ -11,12 +11,12 @@ da população. Um sorteio enviesado invalida a anotação inteira.
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "analysis"))
 
 import pytest
 
-from amostrar_textos import (
-    ESTRATOS, collect, draw, merge, parse_sizes, published, stratum, text_id,
+from sample_texts import (
+    STRATA, collect, draw, merge, parse_sizes, published, stratum, text_id,
 )
 
 RUMOR = "URGENTE: repasse isso agora"
@@ -104,7 +104,7 @@ def test_merge_sums_occurrences_and_keeps_the_smaller_depth():
 def test_draw_respects_the_requested_sizes():
     sample = draw(_pool({"boato": 80, "correcao": 80, "ambiguo": 200}),
                   {"boato": 60, "correcao": 60, "ambiguo": 180}, seed=0)
-    counts = {name: sum(1 for r in sample if r["estrato"] == name) for name in ESTRATOS}
+    counts = {name: sum(1 for r in sample if r["estrato"] == name) for name in STRATA}
     assert counts == {"boato": 60, "correcao": 60, "ambiguo": 180}
 
 
