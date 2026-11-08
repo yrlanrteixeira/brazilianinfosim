@@ -76,12 +76,11 @@ logs/
 CLAUDE.md
 
 # Documentação: pesada em PDF e CSV, menos o pacote de entrega do artigo
-docs/*
-!docs/entrega/
+# Documentação e entrega ficam fora do versionamento, junto com o artigo.
+docs/
 
-# Artefatos de compilação do LaTeX. O .tex é versionado; o resto se regenera.
+# Artefatos de compilação do LaTeX
 *.aux
 *.out
 *.toc
 *.synctex.gz
-docs/entrega/*.pdf
