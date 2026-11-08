@@ -37,7 +37,10 @@ def test_refuting_a_correction_does_not_count_as_textual_support(monkeypatch, tm
     assert review["classification_complete"]
     assert review["stance_reach_pct"]["supports"] == 10
     assert review["stance_reach_pct"]["rejects"] > 10
-    assert result.final_reach_pct > review["stance_reach_pct"]["supports"]
+    # O contador de linhagem somava as contestações de correção e passava do
+    # apoio medido no texto. Agora coincide, e as contestações têm conta própria.
+    assert result.final_reach_pct == review["stance_reach_pct"]["supports"]
+    assert result.final_ambiguous_reach_pct > 0
     assert review["factual_accuracy"] == "not_assessed"
     assert payload["metric_semantics"]["final_reach_pct"] == "rumor_lineage_exposure"
 

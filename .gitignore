@@ -53,15 +53,10 @@ Thumbs.db
 desktop.ini
 
 # Project data / outputs
-data/outputs/tcc2/
-data/outputs/*.csv
-data/outputs/*.db
-data/outputs/*.sqlite
-data/outputs/*.png
-data/outputs/*.pdf
-# Gravações de replay. Para versionar uma escolhida: git add -f <arquivo>
-data/outputs/recordings/
-!data/outputs/.gitkeep
+# A pasta inteira: uma campanha passa de gigabytes em JSON de resultado.
+# Para versionar um arquivo escolhido, como uma gravação: git add -f <arquivo>
+/data/outputs/*
+!/data/outputs/.gitkeep
 
 # Logs
 *.log
@@ -72,5 +67,20 @@ logs/
 *.gguf
 .cache/
 
+# Ferramentas locais. Estavam só no .git/info/exclude, invisível para o time.
+.claude/worktrees/
+.mcp.json
+/SETUP.html
+
+# Instruções de agente específicas da máquina
 CLAUDE.md
+
+# Documentação: pesada em PDF e CSV, menos o pacote de entrega do artigo
+# Documentação e entrega ficam fora do versionamento, junto com o artigo.
 docs/
+
+# Artefatos de compilação do LaTeX
+*.aux
+*.out
+*.toc
+*.synctex.gz

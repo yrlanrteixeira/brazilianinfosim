@@ -40,11 +40,7 @@ Você recebeu a seguinte mensagem em uma rede social:
 
 {history_block}
 
-ATENÇÃO: Se a mensagem começar com "[REFUTAÇÃO]", ela é uma CORREÇÃO de uma fake news
-que estava circulando. Considere isso ao decidir: se você é cético ou fact-checker,
-provavelmente vai REPASSAR a refutação para conter a desinformação. Se você é
-amplificador, pode IGNORAR ou QUESTIONAR a refutação por dissonância cognitiva.
-
+{refutation_block}
 Com base no seu perfil, escolha UMA das ações abaixo e responda APENAS com JSON válido:
 
 {{
@@ -60,6 +56,15 @@ Regras:
 - REFUTAR: você sabe que é falso e escreve uma correção.
 
 Responda SOMENTE com o JSON, sem texto adicional.
+"""
+
+# Só entra quando a mensagem recebida é mesmo uma refutação. No boato, o texto
+# informava ao agente que havia uma fake news circulando, antes de ele decidir.
+REFUTATION_BLOCK = """\
+ATENÇÃO: Se a mensagem começar com "[REFUTAÇÃO]", ela é uma CORREÇÃO de uma fake news
+que estava circulando. Considere isso ao decidir: se você é cético ou fact-checker,
+provavelmente vai REPASSAR a refutação para conter a desinformação. Se você é
+amplificador, pode IGNORAR ou QUESTIONAR a refutação por dissonância cognitiva.
 """
 
 
@@ -462,6 +467,8 @@ class LLMClient:
             agent_description=agent_description,
             message=message_content,
             history_block=history_block,
+            refutation_block=(REFUTATION_BLOCK
+                              if message_content.startswith("[REFUTAÇÃO]") else ""),
         )
 
         # Cache primeiro

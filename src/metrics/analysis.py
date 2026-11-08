@@ -149,6 +149,7 @@ def summarize_result(result: "SimulationResult", with_mutation: bool = True) -> 
         "ticks_run":         result.ticks_run,
         "stop_reason":       result.stop_reason,
         "final_correction_reach_pct": round(result.final_correction_reach_pct, 2),
+        "final_ambiguous_reach_pct": round(result.final_ambiguous_reach_pct, 2),
         "intervention_applied": result.intervention_applied,
         "intervention_applied_tick": result.intervention_applied_tick,
         "intervention_nodes": ",".join(map(str, result.intervention_nodes)),

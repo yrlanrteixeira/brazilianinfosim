@@ -171,7 +171,8 @@ def test_prompt_is_dominated_by_the_template():
     """A causa raiz, em números: template fixo maior que a parte variável."""
     description = AMPLIFIER.to_prompt_description()
     prompt = DECISION_PROMPT.format(
-        agent_description=description, message=MSG_A, history_block=""
+        agent_description=description, message=MSG_A, history_block="",
+        refutation_block=""
     )
     variable_part = len(description) + len(MSG_A)
     assert variable_part < len(prompt) - variable_part

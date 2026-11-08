@@ -32,15 +32,27 @@ class Message:
     sender_id: Optional[int] = None
     # Versão anterior: o índice de mutação compara versões consecutivas.
     parent_content: Optional[str] = None
-    # Refutação é linhagem à parte: deduplicada junto com o boato que corrige,
-    # ela nunca chegaria a quem já viu o boato.
+    # Canal de entrega, não postura do texto: alterna a cada refutação para que
+    # a correção chegue a quem já viu o boato. Quem classifica é refutation_depth.
     is_refutation: bool = False
     parent_is_refutation: bool = False
+    # Refutações acumuladas na linhagem. 0 é o boato, 1 é a correção dele. De 2
+    # em diante a postura do texto só se resolve por anotação de conteúdo.
+    refutation_depth: int = 0
+
+    def __post_init__(self) -> None:
+        if self.is_refutation and self.refutation_depth == 0:
+            self.refutation_depth = 1
 
     @property
     def dedup_key(self) -> tuple[str, bool]:
         """Uma exposição por boato, não por variante do texto."""
         return (self.original_content, self.is_refutation)
+
+    @property
+    def lineage_key(self) -> tuple[str, int]:
+        """Identifica a linhagem para medição, separando contestações sucessivas."""
+        return (self.original_content, self.refutation_depth)
 
     def mutate(self, new_content: str, sender_id: Optional[int] = None) -> "Message":
         return Message(
@@ -53,6 +65,7 @@ class Message:
             parent_content=self.content,
             is_refutation=self.is_refutation,
             parent_is_refutation=self.is_refutation,
+            refutation_depth=self.refutation_depth,
         )
 
     def forward(self, sender_id: int) -> "Message":
@@ -64,6 +77,7 @@ class Message:
             parent_content=self.content,
             is_refutation=self.is_refutation,
             parent_is_refutation=self.is_refutation,
+            refutation_depth=self.refutation_depth,
         )
 
 
@@ -90,7 +104,7 @@ class InfoAgent(mesa.Agent):
         # Estado dinâmico
         self.inbox: list[Message] = []
         self.sent_messages: list[Message] = []
-        self.seen_rumors: set[tuple[str, bool]] = set()
+        self.seen_lineages: set[tuple[str, int]] = set()
         # Reexposição é permitida entre ticks, não dentro do mesmo tick.
         self._tick_seen: set[tuple[str, bool]] = set()
         self._tick_seen_at: int = -1
@@ -100,17 +114,22 @@ class InfoAgent(mesa.Agent):
 
     @property
     def has_seen_disinformation(self) -> bool:
-        return any(not correction for _, correction in self.seen_rumors)
+        return any(depth == 0 for _, depth in self.seen_lineages)
 
     @property
     def has_seen_correction(self) -> bool:
-        return any(correction for _, correction in self.seen_rumors)
+        return any(depth == 1 for _, depth in self.seen_lineages)
+
+    @property
+    def has_seen_ambiguous(self) -> bool:
+        """Contestação de correção: só a leitura do texto resolve a postura."""
+        return any(depth >= 2 for _, depth in self.seen_lineages)
 
     @property
     def mutated_messages(self) -> list[Message]:
         """Mensagens que este agente enviou com conteúdo alterado."""
         return [m for m in self.sent_messages
-                if not m.is_refutation and not m.parent_is_refutation
+                if m.refutation_depth == 0
                 and m.parent_content is not None and m.content != m.parent_content]
 
     def receive(self, message: Message) -> None:
@@ -129,7 +148,7 @@ class InfoAgent(mesa.Agent):
         if key in self._tick_seen or any(m.dedup_key == key for m in self.inbox):
             return
         self._tick_seen.add(key)
-        self.seen_rumors.add(key)
+        self.seen_lineages.add(message.lineage_key)
         self.inbox.append(message)
         self._audit_message("received", message)
 
@@ -157,12 +176,12 @@ class InfoAgent(mesa.Agent):
     def _handle_indifferent(self, message: Message) -> None:
         # Usava `random` global (não semeado), tornando a ignição de sementes
         # indiferentes irreprodutível entre execuções. Agora usa o RNG do modelo.
-        self.seen_rumors.add(message.dedup_key)
+        self.seen_lineages.add(message.lineage_key)
         if self.model.rng.random() < 0.10:   # 10% de chance de compartilhar
             self._broadcast(message.forward(self.node_id))
 
     def _process_message(self, message: Message) -> None:
-        self.seen_rumors.add(message.dedup_key)
+        self.seen_lineages.add(message.lineage_key)
 
         content = message.content
         if message.is_refutation and not content.startswith("[REFUTAÇÃO]"):
@@ -207,7 +226,8 @@ class InfoAgent(mesa.Agent):
         self.belief_level = min(1.0, max(0.0, self.belief_level + direction * changes[decision]))
 
         if decision == Decision.REFUTE:
-            # Alternância operacional de linhagem; não classifica o sentido do texto.
+            # O canal alterna para a mensagem ser entregue; a profundidade só
+            # cresce, porque contestar uma correção não devolve o texto ao boato.
             refutation = Message(
                 content=new_content if message.is_refutation else f"[REFUTAÇÃO] {new_content}",
                 original_content=message.original_content,
@@ -216,6 +236,7 @@ class InfoAgent(mesa.Agent):
                 parent_content=message.content,
                 is_refutation=not message.is_refutation,
                 parent_is_refutation=message.is_refutation,
+                refutation_depth=message.refutation_depth + 1,
             )
             self._broadcast(refutation)
 
@@ -255,4 +276,5 @@ class InfoAgent(mesa.Agent):
             "parent_content": message.parent_content, "sender_id": message.sender_id,
             "hops": message.hops, "is_refutation": message.is_refutation,
             "parent_is_refutation": message.parent_is_refutation,
+            "refutation_depth": message.refutation_depth,
         })

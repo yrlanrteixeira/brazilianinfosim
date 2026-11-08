@@ -161,6 +161,7 @@ class InfoSimModel(mesa.Model):
                     m._count_reached_active() / max(1, len(m.agents_by_id)) * 100
                 ),
                 "correction_reach_pct": lambda m: m._count_corrections() / m.config.n_agents * 100,
+                "ambiguous_reach_pct": lambda m: m._count_ambiguous() / m.config.n_agents * 100,
                 "believers": self._count_believers,
                 "pending_messages": lambda m: sum(len(a.inbox) for a in m.agents_by_id.values()),
                 "tick": lambda m: m.tick,
@@ -170,6 +171,7 @@ class InfoSimModel(mesa.Model):
                 "agent_type": lambda a: a.profile.agent_type.value,
                 "has_seen": "has_seen_disinformation",
                 "has_seen_correction": "has_seen_correction",
+                "has_seen_ambiguous": "has_seen_ambiguous",
             }
         )
 
@@ -310,6 +312,9 @@ class InfoSimModel(mesa.Model):
     def _count_corrections(self) -> int:
         return sum(a.has_seen_correction for a in self._population_agents())
 
+    def _count_ambiguous(self) -> int:
+        return sum(a.has_seen_ambiguous for a in self._population_agents())
+
     def _count_believers(self) -> int:
         return sum(1 for a in self.agents_by_id.values() if a.belief_level > 0.5)
 
@@ -384,6 +389,7 @@ class InfoSimModel(mesa.Model):
             llm_stats=self.llm.stats,
             final_reach_pct_active=self._count_reached_active() / max(1, len(self.agents_by_id)) * 100,
             final_correction_reach_pct=self._count_corrections() / self.config.n_agents * 100,
+            final_ambiguous_reach_pct=self._count_ambiguous() / self.config.n_agents * 100,
             mutations=self._collect_mutations(),
             n_removed=len(self.removed_nodes),
             refusals_total=sum(a.refusal_count for a in self._population_agents()),
@@ -413,6 +419,9 @@ class SimulationResult:
     ticks_run: int = 0
     stop_reason: str = "unknown"
     final_correction_reach_pct: float = 0.0
+    # Contestação de correção, profundidade 2 ou mais. O limite superior do
+    # alcance do boato é final_reach_pct somado a este valor.
+    final_ambiguous_reach_pct: float = 0.0
     intervention_applied: bool = False
     intervention_applied_tick: Optional[int] = None
     intervention_nodes: list[int] = field(default_factory=list)
