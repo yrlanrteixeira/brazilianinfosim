@@ -77,12 +77,11 @@ CLAUDE.md
 
 # Documentação: pesada em PDF e CSV, menos o pacote de entrega do artigo
 docs/*
-!docs/artigo-novo/
+!docs/entrega/
 
-# O artigo vive no Overleaf. Aqui ficam so os dados e os scripts que os geram.
-docs/artigo-novo/**/*.tex
-docs/artigo-novo/**/*.pdf
+# Artefatos de compilação do LaTeX. O .tex é versionado; o resto se regenera.
 *.aux
 *.out
 *.toc
 *.synctex.gz
+docs/entrega/*.pdf
