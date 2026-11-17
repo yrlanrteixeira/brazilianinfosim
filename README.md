@@ -3,7 +3,7 @@
 Framework de simulação de sociedades com agentes LLM para estudar a propagação de desinformação no contexto brasileiro.
 
 > TCC — Engenharia de Computação | PUC Minas  
-> Orientador: Prof. Pedro Américo Almeida Magalhães Júnior
+> Orientador: Prof.ª Natalia Camillo do Carmo
 
 ---
 
