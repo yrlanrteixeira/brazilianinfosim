@@ -128,16 +128,20 @@ def test_replay_preserves_the_recorded_graph_with_controlled_density(tmp_path, m
     assert set(replay.G.edges()) == set(model.G.edges())
 
 
-def test_recording_preserves_exposure_after_removing_the_emitter(tmp_path, monkeypatch):
+def test_recording_preserves_exposure_after_removing_hubs(tmp_path, monkeypatch):
+    """Hubs já expostos e depois removidos seguem no alcance gravado. O emissor
+    não pode mais ser removido, então a remoção vem depois da primeira entrega."""
     monkeypatch.setattr("simulation.engine.LLMClient", lambda **_: FakeLLM())
-    target = tmp_path / "removed-emitter.json"
+    target = tmp_path / "removed-hubs-after-exposure.json"
     model = InfoSimModel(SimulationConfig(
-        n_agents=12, max_ticks=1, seed=42, intervention="remove_hubs",
-        intervention_tick=0, record_path=str(target),
+        n_agents=12, max_ticks=2, seed=42, intervention="remove_hubs",
+        intervention_tick=1, synchronous_updates=True, record_path=str(target),
+        emitter_type="amplificador",  # um emissor indiferente quase nunca repassa
     ))
     result = model.run()
     recording = json.loads(target.read_text(encoding="utf-8"))
-    assert model.seed_node in model.removed_nodes
+    assert model.seed_node not in model.removed_nodes
+    assert any(model.removed_agents[node].has_seen_disinformation for node in model.removed_nodes)
     assert [tick["reached"] for tick in recording["ticks"]] == result.model_data.reached_count.tolist()
 
 

@@ -60,12 +60,20 @@ def test_audit_keeps_only_accepted_receipts_and_actual_publications(monkeypatch)
     assert not any(event["content"] == "Proposta descartada" for event in model.message_audit)
 
 
-def test_audit_retains_queued_exposure_after_emitter_removal(monkeypatch):
-    model = build(monkeypatch, intervention="remove_hubs", intervention_tick=0, max_ticks=1)
+def test_audit_retains_queued_exposure_after_hub_removal(monkeypatch):
+    """Hubs que receberam o boato e foram removidos antes de decidir continuam
+    no registro e no alcance. O emissor não pode mais ser removido, então a
+    remoção vem na rodada seguinte à primeira entrega."""
+    model = build(monkeypatch, intervention="remove_hubs", intervention_tick=1,
+                  max_ticks=2, synchronous_updates=True)
     result = model.run()
-    assert result.message_audit[0]["node_id"] in model.removed_nodes
-    assert result.message_audit[0]["event"] == "received"
-    assert result.message_audit[0]["tick"] == 0
+    removed = set(model.removed_nodes)
+    queued = {event["node_id"] for event in result.message_audit
+              if event["event"] == "received" and event["node_id"] in removed}
+    assert queued
+    assert not any(event["event"] == "sent" and event["node_id"] in removed
+                   for event in result.message_audit)
+    assert all(model.removed_agents[node].has_seen_disinformation for node in queued)
 
 
 @pytest.fixture

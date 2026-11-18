@@ -156,6 +156,9 @@ declarar esse fator.
 | `factcheckers_peripheral` | Converte os 10% de nós de menor grau em verificadores |
 | `remove_hubs` | Remove os 5 maiores supernós da rede |
 
+Nenhuma intervenção atinge o emissor: os nós tratados são escolhidos entre os
+demais, para não confundir a intervenção na rede com trocar quem inicia o boato.
+
 ---
 
 ## Campanha com orçamento de tempo

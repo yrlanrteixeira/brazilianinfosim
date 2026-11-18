@@ -117,14 +117,18 @@ def test_delayed_intervention_happens_during_active_cascade(monkeypatch):
 
 
 def test_preventive_factchecker_changes_action_before_first_broadcast(monkeypatch):
-    control = build(monkeypatch, max_ticks=1).run()
-    treated_model = build(monkeypatch, max_ticks=1,
+    """Convertido em t=0, o hub já decide como verificador na primeira vez que
+    recebe o boato. O emissor fica fora da conversão."""
+    control = build(monkeypatch, max_ticks=4).run()
+    treated_model = build(monkeypatch, max_ticks=4,
                           intervention="factcheckers_hub", intervention_tick=0)
     treated = treated_model.run()
     assert treated.intervention_applied_tick == 0
-    assert treated.final_reach_pct == 10
+    assert treated_model.seed_node not in treated.intervention_nodes
+    converted = treated_model.agents_by_id[treated.intervention_nodes[0]]
+    assert converted.interaction_history[0]["decision"] == Decision.REFUTE.value
+    assert control.final_correction_reach_pct == 0
     assert treated.final_correction_reach_pct > 0
-    assert treated.final_reach_pct < control.final_reach_pct
 
 
 def test_last_collection_matches_final_state_and_plot_index(monkeypatch):
@@ -193,14 +197,33 @@ def test_each_factchecker_intervention_changes_selected_profiles(monkeypatch, in
         assert "verificar informações" in agent.profile.to_prompt_description()
 
 
+@pytest.mark.parametrize("intervention", ["factcheckers_hub", "factcheckers_peripheral", "remove_hubs"])
+def test_interventions_never_target_the_emitter(monkeypatch, intervention):
+    """Tratar quem inicia o boato confunde a intervenção na rede com trocar o
+    emissor, que já é uma condição própria. Com o emissor entre os nós de maior
+    grau, remove_hubs o removia e o boato nem começava."""
+    model = build(monkeypatch, intervention=intervention, intervention_tick=0)
+    ranked = sorted(model.G.degree(), key=lambda pair: pair[1],
+                    reverse=intervention != "factcheckers_peripheral")
+    model.seed_node = ranked[0][0]
+    emitter_profile = model.agents_by_id[model.seed_node].profile
+    model._apply_intervention()
+    assert model.seed_node not in model.intervention_nodes
+    assert model.seed_node in model.agents_by_id and model.seed_node in model.G
+    assert not emitter_profile.converted_by_intervention
+    assert len(model.intervention_nodes) == (5 if intervention == "remove_hubs" else 1)
+
+
 def test_removal_changes_network_and_retains_exposure_in_result(monkeypatch):
     model = build(monkeypatch, intervention="remove_hubs", intervention_tick=0)
     result = model.run()
     assert result.intervention_applied_tick == 0
     assert result.n_removed == 5
-    assert result.final_reach_pct == 10
-    assert result.final_reach_pct_active == 0
+    assert model.seed_node not in model.removed_nodes
+    assert model.agents_by_id[model.seed_node].has_seen_disinformation
     assert model.G.number_of_nodes() == len(model.agents) == 5
+    assert result.final_reach_pct == model._count_reached() / 10 * 100
+    assert result.final_reach_pct_active == model._count_reached_active() / 5 * 100
 
 
 def test_result_json_contains_final_metrics_and_provenance(monkeypatch, tmp_path):

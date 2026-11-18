@@ -260,12 +260,19 @@ class InfoSimModel(mesa.Model):
         seed_agent.receive(msg)
         logger.info(f"Fake news injetada no nó {start_node} (grau={self.G.degree(start_node)})")
 
+    def _targets(self, ranked: list[int], k: int) -> list[int]:
+        """Os k primeiros da ordem, sem o emissor. Tratar quem inicia o boato
+        confundiria a intervenção na rede com trocar o emissor, que já é uma
+        condição própria (emitter_type)."""
+        return [node for node in ranked if node != self.seed_node][:k]
+
     def _apply_intervention(self) -> None:
         """Aplica intervenção no tick configurado."""
         if not self.config.intervention or self.intervention_applied_tick is not None:
             return
         if self.config.intervention == "factcheckers_hub":
-            hubs = get_hub_nodes(self.G, top_k=max(1, self.config.n_agents // 10))
+            hubs = self._targets(get_hub_nodes(self.G, top_k=len(self.G)),
+                                 max(1, self.config.n_agents // 10))
             for node_id in hubs:
                 # Antes fazia apenas `profile.agent_type = AgentType.FACTCHECKER`,
                 # que não altera nada do que o LLM efetivamente lê.
@@ -275,7 +282,8 @@ class InfoSimModel(mesa.Model):
 
         elif self.config.intervention == "factcheckers_peripheral":
             from network.topology import get_peripheral_nodes
-            peripheral = get_peripheral_nodes(self.G, bottom_k=max(1, self.config.n_agents // 10))
+            peripheral = self._targets(get_peripheral_nodes(self.G, bottom_k=len(self.G)),
+                                       max(1, self.config.n_agents // 10))
             for node_id in peripheral:
                 # Antes fazia apenas `profile.agent_type = AgentType.FACTCHECKER`,
                 # que não altera nada do que o LLM efetivamente lê.
@@ -284,7 +292,7 @@ class InfoSimModel(mesa.Model):
             self.intervention_nodes = peripheral
 
         elif self.config.intervention == "remove_hubs":
-            hubs = get_hub_nodes(self.G, top_k=5)
+            hubs = self._targets(get_hub_nodes(self.G, top_k=len(self.G)), 5)
             self.G.remove_nodes_from(hubs)
             for node_id in hubs:
                 agent = self.agents_by_id.pop(node_id)
