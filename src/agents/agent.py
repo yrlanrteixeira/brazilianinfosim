@@ -32,8 +32,9 @@ class Message:
     sender_id: Optional[int] = None
     # Versão anterior: o índice de mutação compara versões consecutivas.
     parent_content: Optional[str] = None
-    # Canal de entrega, não postura do texto: alterna a cada refutação para que
-    # a correção chegue a quem já viu o boato. Quem classifica é refutation_depth.
+    # Marca de refutação, não postura do texto: alterna a cada refutação e decide
+    # o marcador [REFUTAÇÃO] no prompt. Quem classifica e deduplica é
+    # refutation_depth.
     is_refutation: bool = False
     parent_is_refutation: bool = False
     # Refutações acumuladas na linhagem. 0 é o boato, 1 é a correção dele. De 2
@@ -45,9 +46,14 @@ class Message:
             self.refutation_depth = 1
 
     @property
-    def dedup_key(self) -> tuple[str, bool]:
-        """Uma exposição por boato, não por variante do texto."""
-        return (self.original_content, self.is_refutation)
+    def dedup_key(self) -> tuple[str, int]:
+        """Uma exposição por linhagem e profundidade, não por variante do texto.
+
+        Pela marca, o boato (profundidade 0) e a contestação de uma correção
+        (profundidade 2) tinham a mesma chave: quem recebia os dois na mesma
+        rodada perdia o que chegasse depois, e o alcance do boato saía menor.
+        """
+        return self.lineage_key
 
     @property
     def lineage_key(self) -> tuple[str, int]:
@@ -106,7 +112,7 @@ class InfoAgent(mesa.Agent):
         self.sent_messages: list[Message] = []
         self.seen_lineages: set[tuple[str, int]] = set()
         # Reexposição é permitida entre ticks, não dentro do mesmo tick.
-        self._tick_seen: set[tuple[str, bool]] = set()
+        self._tick_seen: set[tuple[str, int]] = set()
         self._tick_seen_at: int = -1
         self.belief_level: float = 0.5   # 0=desacredita, 1=acredita totalmente
         self.interaction_history: list[dict] = []

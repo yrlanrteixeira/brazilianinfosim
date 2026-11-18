@@ -6,8 +6,8 @@ Classificação da linhagem medida, separada do canal de entrega.
 A flag `is_refutation` alternava a cada refutação e também decidia se a
 exposição contava como boato. Com isso, a refutação de uma refutação voltava a
 ser contada como alcance da desinformação, mesmo quando o texto corrigia o
-boato. O canal continua alternando, porque é ele que entrega a correção a quem
-já viu o boato; quem classifica agora é `refutation_depth`.
+boato. A flag continua alternando, porque decide o marcador [REFUTAÇÃO] do
+prompt; quem classifica e quem deduplica a entrega agora é `refutation_depth`.
 """
 
 import sys
@@ -115,12 +115,21 @@ def test_forward_and_mutate_preserve_the_depth():
     assert contested.mutate("outra versão", sender_id=1).refutation_depth == 2
 
 
-def test_delivery_channel_is_unchanged(agent):
-    """A profundidade mede, não entrega: mexer no dedup mudaria as dinâmicas."""
+@pytest.mark.parametrize("contested_first", [True, False])
+def test_rumor_and_contested_correction_are_both_delivered(agent, contested_first):
+    """Pela marca, os dois tinham a mesma chave e o segundo era descartado: quem
+    recebia a contestação antes do boato não contava como exposto ao boato."""
     contested = _refute(_refute(_rumor(), "[REFUTAÇÃO] falso"), "não é bem assim")
-    assert contested.dedup_key == _rumor().dedup_key
-    agent.receive(_rumor())
+    for message in ([contested, _rumor()] if contested_first else [_rumor(), contested]):
+        agent.receive(message)
+    assert sorted(m.refutation_depth for m in agent.inbox) == [0, 2]
+    assert agent.has_seen_disinformation and agent.has_seen_ambiguous
+
+
+def test_two_contested_corrections_in_one_tick_count_once(agent):
+    contested = _refute(_refute(_rumor(), "[REFUTAÇÃO] falso"), "não é bem assim")
     agent.receive(contested)
+    agent.receive(contested.mutate("outra contestação", sender_id=1))
     assert len(agent.inbox) == 1
 
 
